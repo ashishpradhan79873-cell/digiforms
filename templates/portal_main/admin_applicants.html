@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Panel - Applicants{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
+  .layout.compact { grid-template-columns:86px 1fr; }
+  .side { background:#fff; border-right:1px solid #dbe3ee; }
+  .layout.compact .side { padding-left:8px; padding-right:8px; }
+  .layout.compact .side .menu-label,
+  .layout.compact .side .brand-sub { display:none; }
+  .layout.compact .side .menu-link { justify-content:center; }
+  .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
+  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
+  .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .panel { padding:16px; min-width:0; }
+  .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tab { border:1px solid #d5deeb; background:#fff; border-radius:10px; padding:7px 12px; font-weight:700; color:#334155; font-size:13px; }
+  .tab.active { background:#0a3b78; border-color:#0a3b78; color:#fff; }
+  .status { border-radius:999px; font-size:12px; font-weight:900; padding:4px 9px; display:inline-block; }
+  .pending { background:#f9e6a3; color:#7a5a03; }
+  .approved { background:#c9f2d7; color:#0c6d3d; }
+  .under_review { background:#d8e7ff; color:#214fa8; }
+  .rejected { background:#ffd8d8; color:#9e1f2c; }
+  .cancelled { background:#e2e8f0; color:#334155; }
+  .btn { border-radius:8px; font-weight:700; padding:6px 9px; border:1px solid transparent; font-size:12px; line-height:1.2; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+  .btn-blue { background:#0b63ce; color:#fff; }
+  .btn-red { background:#fff1f1; border-color:#efb9b9; color:#a31f1f; }
+  .btn-green { background:#15803d; color:#fff; }
+  .btn-gray { background:#fff; border-color:#d2dbe8; color:#334155; }
+  .table-wrap { overflow:auto; }
+  .app-table { min-width:1120px; }
+  .app-table th, .app-table td { padding:10px 12px; font-size:13px; vertical-align:top; }
+  .app-table th { white-space:nowrap; }
+  .doc-pills { display:flex; flex-wrap:wrap; gap:6px; max-width:290px; }
+  .doc-pill { display:inline-flex; align-items:center; gap:4px; border:1px solid #c9d6e8; background:#f8fbff; color:#1e3a5f; padding:3px 7px; border-radius:999px; font-size:11px; font-weight:700; text-decoration:none; }
+  .action-pack { display:flex; flex-wrap:wrap; gap:6px; min-width:280px; }
+  .compact-select { min-width:120px; border:1px solid #cbd5e1; border-radius:8px; padding:5px 7px; font-size:12px; background:#fff; }
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.58); display:none; align-items:center; justify-content:center; padding:22px; z-index:50; }
+  .modal { width:min(1020px, 100%); max-height:90vh; overflow:auto; background:#fff; border-radius:16px; border:1px solid #d8dfeb; }
+  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .detail-row { border:1px solid #dbe2ee; border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; gap:10px; }
+  .doc-card { border:1px solid #dbe2ee; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .copy-btn { border:1px solid #d2dbe8; background:#fff; border-radius:8px; padding:3px 8px; font-size:12px; font-weight:800; }
+  @media (max-width: 1100px){
+    .layout, .layout.compact { grid-template-columns:1fr; }
+    .panel { padding:12px; }
+    .detail-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width: 720px){
+    .tab { padding:6px 9px; font-size:12px; }
+    .btn { padding:5px 8px; font-size:11px; }
+  }
+</style>
+
+<div id="adminLayout" class="layout">
+  <aside class="side p-4">
+    <div class="px-3 py-2 border-b border-slate-200">
+      <div class="text-2xl font-black">Digi Form</div>
+      <div class="text-sm text-slate-500 brand-sub">Manage Applications</div>
+      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+    </div>
+    <nav class="mt-4 space-y-2">
+      <a class="menu-link active" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
+      <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
+      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="panel">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <h1 class="text-3xl md:text-4xl font-black">Applicants List</h1>
+    <p class="text-base md:text-lg text-slate-500">View and manage applications</p>
+
+    <div class="mt-4 flex flex-wrap gap-3 items-center">
+      <form method="get" class="flex flex-wrap gap-2">
+        <input type="hidden" name="status" value="{{ status }}">
+        <input id="liveSearchInput" name="q" value="{{ query }}" placeholder="Search name or ID..." list="applicantNameSuggestions" class="rounded-lg border border-slate-300 px-3 py-2 min-w-[220px]" autocomplete="off">
+        <datalist id="applicantNameSuggestions">
+          {% for app in applications %}
+            {% if app.profile.full_name %}
+              <option value="{{ app.profile.full_name }}"></option>
+            {% endif %}
+          {% endfor %}
+        </datalist>
+        <button type="submit" class="btn btn-blue">Search</button>
+      </form>
+      <a href="{% url 'admin_export_csv' %}?q={{ query }}&status={{ status }}" class="btn btn-green">
+        <span class="material-symbols-outlined" style="font-size:14px;">download</span> CSV
+      </a>
+    </div>
+
+    <div class="tabs mt-3">
+      {% for value, label in status_choices %}
+      <a href="{% url 'admin_applicants' %}?status={{ value }}&q={{ query }}" class="tab {% if status == value %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    <section class="block mt-4 table-wrap">
+      <table class="w-full text-left app-table">
+        <thead class="bg-slate-50 text-slate-600 text-sm">
+          <tr>
+            <th>ID</th>
+            <th>Full Name</th>
+            <th>DOB</th>
+            <th>Gender</th>
+            <th>Category</th>
+            <th>Mobile</th>
+            <th>Post</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for app in applications %}
+          <tr class="border-t border-slate-200 align-top app-row" data-search="{{ app.id }} {{ app.profile.id }} {{ app.profile.full_name|lower }} {{ app.profile.mobile }} {{ app.vacancy.title|lower }}">
+            <td class="font-bold">#{{ app.id }}</td>
+            <td>{{ app.profile.full_name }}</td>
+            <td>{{ app.profile.dob|date:'Y-m-d' }}</td>
+            <td>{{ app.profile.get_gender_display }}</td>
+            <td>{{ app.profile.category }}</td>
+            <td>{{ app.profile.mobile }}</td>
+            <td>{{ app.vacancy.title }}</td>
+            <td><span class="status {{ app.status }}">{{ app.get_status_display }}</span></td>
+            <td>
+              <div class="action-pack">
+                <button
+                  type="button"
+                  class="btn btn-gray open-detail"
+                  data-detail-url="{% url 'admin_applicant_detail_json' app.id %}"
+                  data-csv-url="{% url 'admin_export_single_csv' app.id %}"
+                  data-pdf-url="{% url 'admin_applicant_pdf' app.id %}"
+                  data-extension-url="{% url 'admin_applicant_extension_file' app.id %}"
+                  data-doczip-url="{% url 'admin_download_all_documents' app.id %}"
+                >
+                  <span class="material-symbols-outlined" style="font-size:16px;">visibility</span> View
+                </button>
+                <form method="post" action="{% url 'admin_update_application' app.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="cancel">
+                  <button class="btn btn-red" type="submit">Cancel</button>
+                </form>
+                <form method="post" action="{% url 'admin_remove_application' app.id %}">
+                  {% csrf_token %}
+                  <button class="btn btn-red" type="submit">Remove</button>
+                </form>
+                <form method="post" action="{% url 'admin_update_application' app.id %}" class="flex gap-1">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="set_status">
+                  <select name="status" class="compact-select">
+                    <option value="pending" {% if app.status == 'pending' %}selected{% endif %}>Pending</option>
+                    <option value="approved" {% if app.status == 'approved' %}selected{% endif %}>Approved</option>
+                    <option value="under_review" {% if app.status == 'under_review' %}selected{% endif %}>Under Review</option>
+                    <option value="rejected" {% if app.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                    <option value="cancelled" {% if app.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                  </select>
+                  <button class="btn btn-blue" type="submit">Save</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr id="emptyRow"><td colspan="9" class="px-4 py-6 text-center text-slate-500">No applications found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+
+<div id="detailOverlay" class="overlay">
+  <div class="modal">
+    <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+      <h3 class="text-2xl font-black">Applicant Full Details</h3>
+      <button id="closeDetail" class="btn btn-gray" type="button">Close</button>
+    </div>
+    <div class="p-4 space-y-4" id="detailContainer"></div>
+    <div class="p-4 border-t border-slate-200 flex flex-wrap gap-2 justify-end">
+      <button id="copyAllBtn" type="button" class="btn btn-gray">Copy All</button>
+      <a id="csvBtn" href="#" class="btn btn-green">CSV</a>
+      <a id="pdfBtn" href="#" target="_blank" class="btn" style="background:#dc2626;color:#fff;">PDF</a>
+      <a id="extensionBtn" href="#" class="btn" style="background:#7c3aed;color:#fff;">Extension File</a>
+      <a id="docZipBtn" href="#" class="btn" style="background:#0f766e;color:#fff;">Download All Docs</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const overlay = document.getElementById("detailOverlay");
+  const closeBtn = document.getElementById("closeDetail");
+  const container = document.getElementById("detailContainer");
+  const copyAllBtn = document.getElementById("copyAllBtn");
+  const csvBtn = document.getElementById("csvBtn");
+  const pdfBtn = document.getElementById("pdfBtn");
+  const extensionBtn = document.getElementById("extensionBtn");
+  const docZipBtn = document.getElementById("docZipBtn");
+  let copyBuffer = "";
+
+  function escapeHtml(text) {
+    return (text || "").toString().replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
+  }
+
+  function rowHtml(label, value) {
+    const safeLabel = escapeHtml(label);
+    const safeValue = escapeHtml(value || "-");
+    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${safeValue}">Copy</button></div>`;
+  }
+
+  function sectionHtml(title, rows) {
+    return `<section><h4 class="text-xl font-black mb-2">${escapeHtml(title)}</h4><div class="detail-grid">${rows.map((r) => rowHtml(r[0], r[1])).join("")}</div></section>`;
+  }
+
+  document.querySelectorAll(".open-detail").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const res = await fetch(btn.dataset.detailUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      copyBuffer = "";
+      ["personal", "address", "academic", "college", "bank", "vacancy_extra"].forEach((key) => {
+        (data[key] || []).forEach(([label, value]) => { copyBuffer += `${label}: ${value || "-"}\n`; });
+      });
+
+      container.innerHTML = `
+        <section class="block p-3">
+          <div class="text-sm text-slate-500">Application #${data.applicationId} | Applicant #${data.applicantId}</div>
+          <div class="text-2xl font-black mt-1">${escapeHtml(data.vacancy)} (${escapeHtml(data.organization)})</div>
+          <div class="text-sm mt-1">Status: <span class="font-semibold">${escapeHtml(data.status)}</span> | Applied: ${escapeHtml(data.appliedAt)}</div>
+        </section>
+        ${sectionHtml("Personal Details", data.personal || [])}
+        ${sectionHtml("Address", data.address || [])}
+        ${sectionHtml("Academic", data.academic || [])}
+        ${sectionHtml("College", data.college || [])}
+        ${sectionHtml("Bank", data.bank || [])}
+        ${sectionHtml("Vacancy Extra Data", data.vacancy_extra || [])}
+        <section>
+          <h4 class="text-xl font-black mb-2">Documents</h4>
+          <div class="grid md:grid-cols-2 gap-2">
+            ${(data.documents || []).map((doc) => `
+              <div class="doc-card">
+                <div>
+                  <div class="font-semibold">${escapeHtml(doc.title)}</div>
+                  <div class="text-xs text-slate-500 break-all">${escapeHtml(doc.url)}</div>
+                </div>
+                <div class="flex gap-1">
+                  <a class="btn btn-green" href="${doc.url}" download>Download</a>
+                  <button type="button" class="copy-btn" data-copy="${escapeHtml(doc.url)}">Copy Link</button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+      `;
+
+      csvBtn.href = btn.dataset.csvUrl;
+      pdfBtn.href = btn.dataset.pdfUrl;
+      extensionBtn.href = btn.dataset.extensionUrl;
+      docZipBtn.href = btn.dataset.doczipUrl;
+      overlay.style.display = "flex";
+
+      container.querySelectorAll("[data-copy]").forEach((copyBtn) => {
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(copyBtn.dataset.copy || "");
+            copyBtn.textContent = "Copied";
+            setTimeout(() => { copyBtn.textContent = "Copy"; }, 1000);
+          } catch (e) {}
+        });
+      });
+    });
+  });
+
+  copyAllBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(copyBuffer || "");
+      copyAllBtn.textContent = "Copied";
+      setTimeout(() => { copyAllBtn.textContent = "Copy All"; }, 1000);
+    } catch (e) {}
+  });
+
+  closeBtn.addEventListener("click", () => { overlay.style.display = "none"; });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.style.display = "none"; });
+
+  const liveSearchInput = document.getElementById("liveSearchInput");
+  const rows = Array.from(document.querySelectorAll(".app-row"));
+  const emptyRow = document.getElementById("emptyRow");
+  if (liveSearchInput) {
+    liveSearchInput.addEventListener("input", () => {
+      const term = (liveSearchInput.value || "").trim().toLowerCase();
+      let visible = 0;
+      rows.forEach((row) => {
+        const text = row.dataset.search || "";
+        const show = !term || text.includes(term);
+        row.style.display = show ? "" : "none";
+        if (show) visible += 1;
+      });
+      if (emptyRow) {
+        emptyRow.style.display = visible ? "none" : "";
+      }
+    });
+  }
+</script>
+<script>
+  (function () {
+    const layout = document.getElementById("adminLayout");
+    const btn = document.getElementById("sidebarAdjustBtn");
+    if (!layout || !btn) return;
+    const saved = localStorage.getItem("admin_sidebar_compact");
+    if (saved === "1") layout.classList.add("compact");
+    btn.addEventListener("click", () => {
+      layout.classList.toggle("compact");
+      localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,466 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Option Control{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
+  .layout.compact { grid-template-columns:86px 1fr; }
+  .side { background:#fff; border-right:1px solid #dbe3ee; }
+  .layout.compact .side { padding-left:8px; padding-right:8px; }
+  .layout.compact .side .menu-label,
+  .layout.compact .side .brand-sub { display:none; }
+  .layout.compact .side .menu-link { justify-content:center; }
+  .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
+  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
+  .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .panel { padding:16px; min-width:0; }
+  .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
+  .btn { border-radius:8px; font-weight:700; padding:6px 9px; border:1px solid transparent; font-size:12px; line-height:1.2; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+  .btn-red { background:#fff1f1; border-color:#efb9b9; color:#a31f1f; }
+  .btn-green { background:#15803d; color:#fff; }
+  .mini-input { border:1px solid #cbd5e1; border-radius:8px; padding:7px 9px; font-size:13px; width:100%; }
+  .mini-label { font-size:12px; color:#475569; font-weight:700; margin-bottom:4px; display:block; }
+  .table-wrap { overflow:auto; }
+  .builder-box { border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#f8fafc; }
+  .builder-row { display:flex; gap:8px; }
+  .builder-kind { width:130px; }
+  .builder-chip-wrap { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .builder-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid #bfd2ff; background:#eaf1ff; color:#1e3a8a; border-radius:999px; padding:4px 8px; font-size:12px; font-weight:700; }
+  .builder-chip button { border:none; background:transparent; font-size:12px; font-weight:900; color:#1e3a8a; cursor:pointer; }
+  .doc-table { width:100%; border-collapse:collapse; margin-top:8px; }
+  .doc-table th, .doc-table td { border:1px solid #d8dfeb; padding:6px; font-size:12px; }
+  .doc-table th { background:#f8fafc; color:#475569; text-align:left; }
+  @media (max-width: 1100px){ .layout, .layout.compact { grid-template-columns:1fr; } .panel { padding:12px; } }
+</style>
+
+<div id="adminLayout" class="layout">
+  <aside class="side p-4">
+    <div class="px-3 py-2 border-b border-slate-200">
+      <div class="text-2xl font-black">Digi Form</div>
+      <div class="text-sm text-slate-500 brand-sub">Option Management</div>
+      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+    </div>
+    <nav class="mt-4 space-y-2">
+      <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
+      <a class="menu-link {% if category == 'student' %}active{% endif %}" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
+      <a class="menu-link {% if category == 'government' %}active{% endif %}" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
+      <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
+      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="panel">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <h1 class="text-3xl md:text-4xl font-black">
+      {% if category == 'student' %}Student Form Control{% else %}Government Recruitment Control{% endif %}
+    </h1>
+    <p class="text-base md:text-lg text-slate-500">Add/remove/order options and upload image banner.</p>
+
+    <section class="block mt-4 p-4">
+      <form method="post" action="{% url 'admin_save_vacancy' %}" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="option_scope" value="{{ category }}">
+        <input type="hidden" name="category" value="{{ category }}">
+        <div>
+          <label class="mini-label">Title</label>
+          <input class="mini-input" name="title" placeholder="e.g. SSC CHSL 2026" required>
+        </div>
+        <div>
+          <label class="mini-label">Organization</label>
+          <input class="mini-input" name="organization" placeholder="e.g. SSC" required>
+        </div>
+        <div>
+          <label class="mini-label">Last Date</label>
+          <input class="mini-input" type="date" name="last_date" required>
+        </div>
+        <div>
+          <label class="mini-label">Display Order</label>
+          <input class="mini-input" type="number" name="display_order" value="0" min="0">
+        </div>
+        <div>
+          <label class="mini-label">Icon Name</label>
+          <input class="mini-input" name="icon_name" value="description" placeholder="description/work/school">
+        </div>
+        <div>
+          <label class="mini-label">Image (optional)</label>
+          <input class="mini-input" type="file" name="image" accept="image/*">
+        </div>
+        <div class="md:col-span-2 lg:col-span-2">
+          <label class="mini-label">Vacancy Extra Options / Documents (Add/Remove)</label>
+          <div class="builder-box">
+            <button class="btn btn-green" type="button" data-add-doc-row>+ Add Row</button>
+            <table class="doc-table">
+              <thead><tr><th style="width:120px;">Type</th><th>Option/Document Name</th><th style="width:80px;">Action</th></tr></thead>
+              <tbody data-doc-table>
+                <tr>
+                  <td>
+                    <select class="mini-input" data-doc-type>
+                      <option value="DOC">Document</option>
+                      <option value="PHOTO">Photo</option>
+                      <option value="DATA">Data</option>
+                    </select>
+                  </td>
+                  <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+                  <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div data-doc-hidden></div>
+          </div>
+        </div>
+        <div class="md:col-span-2 lg:col-span-2">
+          <label class="mini-label">Selectable Profile Fields (Add/Remove)</label>
+          <div class="builder-box" data-field-editor>
+            <button class="btn btn-green" type="button" data-add-field-row>+ Add Row</button>
+            <table class="doc-table">
+              <thead><tr><th>Field Name</th><th style="width:80px;">Action</th></tr></thead>
+              <tbody data-field-table>
+                <tr>
+                  <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+                  <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div data-field-hidden></div>
+          </div>
+        </div>
+        <div class="flex items-end gap-2">
+          <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
+          <button type="submit" class="btn btn-green">Add Option</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="block mt-4 table-wrap">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-50 text-slate-600">
+          <tr>
+            <th class="px-3 py-2">Preview</th>
+            <th class="px-3 py-2">Title</th>
+            <th class="px-3 py-2">Organization</th>
+            <th class="px-3 py-2">Last Date</th>
+            <th class="px-3 py-2">Order</th>
+            <th class="px-3 py-2">Active</th>
+            <th class="px-3 py-2">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for opt in options %}
+          <tr class="border-t border-slate-200">
+            <td class="px-3 py-2 align-top">
+              {% if opt.image %}
+                <img src="{{ opt.image.url }}" alt="{{ opt.title }}" class="h-10 w-20 rounded object-cover border border-slate-200">
+              {% else %}
+                <span class="material-symbols-outlined text-slate-700">{{ opt.icon_name|default:'description' }}</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2 align-top">
+              <form method="post" action="{% url 'admin_update_vacancy' opt.id %}" enctype="multipart/form-data" class="space-y-2">
+                {% csrf_token %}
+                <input type="hidden" name="option_scope" value="{{ category }}">
+                <input class="mini-input" name="title" value="{{ opt.title }}" required>
+                <input class="mini-input" name="organization" value="{{ opt.organization }}" required>
+                <input class="mini-input" type="date" name="last_date" value="{{ opt.last_date|date:'Y-m-d' }}" required>
+                <div class="grid grid-cols-2 gap-2">
+                  <input class="mini-input" name="icon_name" value="{{ opt.icon_name|default:'description' }}">
+                  <input class="mini-input" type="number" name="display_order" value="{{ opt.display_order }}" min="0">
+                </div>
+                <input class="mini-input" type="file" name="image" accept="image/*">
+                <div class="builder-box" data-doc-editor>
+                  <button class="btn btn-green" type="button" data-add-doc-row>+ Add Row</button>
+                  <table class="doc-table">
+                    <thead><tr><th style="width:120px;">Type</th><th>Option/Document Name</th><th style="width:80px;">Action</th></tr></thead>
+                    <tbody data-doc-table>
+                      {% if opt.required_documents %}
+                        {% for item in opt.required_documents %}
+                          <tr>
+                            <td>
+                              <select class="mini-input" data-doc-type>
+                                <option value="DOC" {% if item|slice:":4" != "PHOTO" and item|slice:":4" != "DATA" %}selected{% endif %}>Document</option>
+                                <option value="PHOTO" {% if item|slice:":5" == "PHOTO" %}selected{% endif %}>Photo</option>
+                                <option value="DATA" {% if item|slice:":4" == "DATA" %}selected{% endif %}>Data</option>
+                              </select>
+                            </td>
+                            <td><input class="mini-input" type="text" data-doc-name value="{% if item|slice:":6" %}{% if item|slice:":5" == "PHOTO" %}{{ item|slice:"6:" }}{% elif item|slice:":3" == "DOC" %}{{ item|slice:"4:" }}{% elif item|slice:":4" == "DATA" %}{{ item|slice:"5:" }}{% else %}{{ item }}{% endif %}{% endif %}" placeholder="e.g. PAN Card"></td>
+                            <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
+                          </tr>
+                        {% endfor %}
+                      {% else %}
+                        <tr>
+                          <td>
+                            <select class="mini-input" data-doc-type>
+                              <option value="DOC">Document</option>
+                              <option value="PHOTO">Photo</option>
+                              <option value="DATA">Data</option>
+                            </select>
+                          </td>
+                          <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+                          <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
+                        </tr>
+                      {% endif %}
+                    </tbody>
+                  </table>
+                  <div data-doc-hidden></div>
+                </div>
+                <div class="builder-box" data-field-editor>
+                  <button class="btn btn-green" type="button" data-add-field-row>+ Add Row</button>
+                  <table class="doc-table">
+                    <thead><tr><th>Field Name</th><th style="width:80px;">Action</th></tr></thead>
+                    <tbody data-field-table>
+                      {% if opt.required_profile_fields %}
+                        {% for item in opt.required_profile_fields %}
+                        <tr>
+                          <td><input class="mini-input" type="text" data-field-name value="{{ item }}" placeholder="e.g. Aadhaar No"></td>
+                          <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
+                        </tr>
+                        {% endfor %}
+                      {% else %}
+                        <tr>
+                          <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+                          <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
+                        </tr>
+                      {% endif %}
+                    </tbody>
+                  </table>
+                  <div data-field-hidden></div>
+                </div>
+                <label class="text-xs text-slate-700"><input type="checkbox" name="clear_image"> Remove current image</label>
+                <label class="text-xs text-slate-700"><input type="checkbox" name="is_active" {% if opt.is_active %}checked{% endif %}> Active</label>
+                <div>
+                  <button type="submit" class="btn btn-green">Edit Save</button>
+                </div>
+              </form>
+              <form method="post" action="{% url 'admin_delete_vacancy' opt.id %}" class="mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="option_scope" value="{{ category }}">
+                <button type="submit" class="btn btn-red">Remove</button>
+              </form>
+            </td>
+            <td class="px-3 py-2 align-top">{{ opt.organization }}</td>
+            <td class="px-3 py-2 align-top">{{ opt.last_date|date:'Y-m-d' }}</td>
+            <td class="px-3 py-2 align-top">{{ opt.display_order }}</td>
+            <td class="px-3 py-2 align-top">{{ opt.is_active|yesno:"Yes,No" }}</td>
+            <td class="px-3 py-2 align-top text-xs text-slate-500">Editable row</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="px-3 py-3 text-slate-500">No options found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+<script>
+  (function () {
+    const layout = document.getElementById("adminLayout");
+    const btn = document.getElementById("sidebarAdjustBtn");
+    if (layout && btn) {
+      const saved = localStorage.getItem("admin_sidebar_compact");
+      if (saved === "1") layout.classList.add("compact");
+      btn.addEventListener("click", () => {
+        layout.classList.toggle("compact");
+        localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
+      });
+    }
+
+    function parseList(text) {
+      const raw = (text || "").replace(/\r/g, "\n");
+      const lines = raw.split("\n").flatMap((line) => line.split(","));
+      const clean = [];
+      lines.forEach((item) => {
+        const v = item.trim();
+        if (!v) return;
+        if (!clean.includes(v)) clean.push(v);
+      });
+      return clean;
+    }
+
+    function syncDocRows(box) {
+      const tbody = box.querySelector("[data-doc-table]");
+      const hiddenWrap = box.querySelector("[data-doc-hidden]");
+      if (!tbody || !hiddenWrap) return;
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const values = [];
+      rows.forEach((row) => {
+        const typeEl = row.querySelector("[data-doc-type]");
+        const nameEl = row.querySelector("[data-doc-name]");
+        const tRaw = (typeEl ? typeEl.value : "DOC").toUpperCase();
+        const t = tRaw === "PHOTO" ? "PHOTO" : (tRaw === "DATA" ? "DATA" : "DOC");
+        const n = (nameEl ? nameEl.value : "").trim();
+        if (!n) return;
+        values.push(`${t}|${n}`);
+      });
+      hiddenWrap.innerHTML = values.map((v) => `<input type="hidden" name="required_documents_item[]" value="${v}">`).join("");
+    }
+
+    function bindDocEditor(box) {
+      const addBtn = box.querySelector("[data-add-doc-row]");
+      const tbody = box.querySelector("[data-doc-table]");
+      if (!addBtn || !tbody) return;
+
+      function bindRow(row) {
+        const removeBtn = row.querySelector("[data-remove-doc-row]");
+        const typeEl = row.querySelector("[data-doc-type]");
+        const nameEl = row.querySelector("[data-doc-name]");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => {
+            row.remove();
+            if (!tbody.querySelector("tr")) addRow();
+            syncDocRows(box);
+          });
+        }
+        if (typeEl) typeEl.addEventListener("change", () => syncDocRows(box));
+        if (nameEl) nameEl.addEventListener("input", () => syncDocRows(box));
+      }
+
+      function addRow() {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>
+            <select class="mini-input" data-doc-type>
+              <option value="DOC">Document</option>
+              <option value="PHOTO">Photo</option>
+              <option value="DATA">Data</option>
+            </select>
+          </td>
+          <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+          <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
+        `;
+        tbody.appendChild(row);
+        bindRow(row);
+        syncDocRows(box);
+      }
+
+      addBtn.addEventListener("click", addRow);
+      tbody.querySelectorAll("tr").forEach(bindRow);
+      syncDocRows(box);
+    }
+
+    function syncFieldRows(box) {
+      const tbody = box.querySelector("[data-field-table]");
+      const hiddenWrap = box.querySelector("[data-field-hidden]");
+      if (!tbody || !hiddenWrap) return;
+      const values = [];
+      tbody.querySelectorAll("tr").forEach((row) => {
+        const nameEl = row.querySelector("[data-field-name]");
+        const v = (nameEl ? nameEl.value : "").trim();
+        if (v) values.push(v);
+      });
+      hiddenWrap.innerHTML = values.map((v) => `<input type="hidden" name="required_profile_fields_item[]" value="${v}">`).join("");
+    }
+
+    function bindFieldEditor(box) {
+      const addBtn = box.querySelector("[data-add-field-row]");
+      const tbody = box.querySelector("[data-field-table]");
+      if (!addBtn || !tbody) return;
+
+      function bindRow(row) {
+        const removeBtn = row.querySelector("[data-remove-field-row]");
+        const nameEl = row.querySelector("[data-field-name]");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => {
+            row.remove();
+            if (!tbody.querySelector("tr")) addRow();
+            syncFieldRows(box);
+          });
+        }
+        if (nameEl) nameEl.addEventListener("input", () => syncFieldRows(box));
+      }
+
+      function addRow() {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+          <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
+        `;
+        tbody.appendChild(row);
+        bindRow(row);
+        syncFieldRows(box);
+      }
+
+      addBtn.addEventListener("click", addRow);
+      tbody.querySelectorAll("tr").forEach(bindRow);
+      syncFieldRows(box);
+    }
+
+    function bindBuilder(box) {
+      const input = box.querySelector("[data-builder-input]");
+      const addBtn = box.querySelector("[data-builder-add]");
+      const list = box.querySelector("[data-builder-list]");
+      const target = box.querySelector("[data-builder-target]");
+      const hiddenWrap = box.querySelector("[data-builder-hidden]");
+      const kindSelect = box.querySelector("[data-builder-kind]");
+      if (!input || !addBtn || !list || !target) return;
+
+      let values = parseList(target.value);
+      function sync() {
+        target.value = values.join("\n");
+        if (hiddenWrap) {
+          const itemName = target.getAttribute("data-builder-item-name") || "";
+          hiddenWrap.innerHTML = values.map((value) => itemName ? `<input type="hidden" name="${itemName}" value="${value}">` : "").join("");
+        }
+        list.innerHTML = values.map((value, idx) => {
+          let label = value;
+          if (value.startsWith("PHOTO|")) label = "Photo: " + value.slice(6);
+          if (value.startsWith("DOC|")) label = "Document: " + value.slice(4);
+          return `
+          <span class="builder-chip">
+            ${label}
+            <button type="button" data-remove-index="${idx}">x</button>
+          </span>
+        `;
+        }).join("");
+        list.querySelectorAll("[data-remove-index]").forEach((btnItem) => {
+          btnItem.addEventListener("click", () => {
+            const idx = parseInt(btnItem.getAttribute("data-remove-index") || "-1", 10);
+            if (idx >= 0) {
+              values.splice(idx, 1);
+              sync();
+            }
+          });
+        });
+      }
+
+      function addValue() {
+        const nextRaw = input.value.trim();
+        if (!nextRaw) return;
+        let next = nextRaw;
+        if (kindSelect) {
+          const kind = (kindSelect.value || "DOC").toUpperCase() === "PHOTO" ? "PHOTO" : "DOC";
+          next = kind + "|" + nextRaw;
+        }
+        const nextKey = next.toLowerCase();
+        const exists = values.some((x) => x.toLowerCase() === nextKey);
+        if (!exists) values.push(next);
+        input.value = "";
+        sync();
+      }
+
+      addBtn.addEventListener("click", addValue);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          addValue();
+        }
+      });
+
+      sync();
+    }
+
+    document.querySelectorAll("[data-doc-editor], .builder-box").forEach((box) => {
+      if (box.querySelector("[data-doc-table]")) bindDocEditor(box);
+    });
+    document.querySelectorAll("[data-field-editor]").forEach(bindFieldEditor);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+
+{% block title %}Select Data To Send{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-6xl mx-auto p-4 md:p-6{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .card { background:#fff; border:1px solid #d7dde7; border-radius:14px; }
+  .step-box { border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fff; }
+  .chip { display:inline-flex; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-weight:800; font-size:12px; padding:4px 10px; }
+  .row-line { display:grid; grid-template-columns:220px 1fr 90px; gap:10px; border-top:1px dashed #dbe3ef; padding:8px 0; font-size:13px; align-items:center; }
+  .row-line:first-child { border-top:none; padding-top:0; }
+  .row-label { color:#475569; font-weight:700; }
+  .row-value { color:#0f172a; word-break:break-word; }
+  @media (max-width: 640px) {
+    .card { border-radius:10px; }
+    .step-box { padding:10px; }
+    .row-line { grid-template-columns:1fr; gap:6px; }
+    .row-label { font-size:12px; }
+    .row-value input { font-size:13px; }
+  }
+</style>
+
+<header class="card px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+  <div>
+    <h1 class="text-2xl md:text-3xl font-black">Select Master Data To Send</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Target: <span class="font-bold">{{ pending.title }}</span> ({{ pending.organization }})
+    </p>
+  </div>
+  <span class="chip">Applicant ID: #{{ profile.id }}</span>
+</header>
+
+<form method="post" enctype="multipart/form-data" class="card mt-4 p-5">
+  {% csrf_token %}
+  <div class="mb-3 flex flex-wrap gap-2">
+    <button type="button" id="allTickBtn" class="inline-flex rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">All Tick</button>
+    <button type="button" id="allUntickBtn" class="inline-flex rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white">All Untick</button>
+  </div>
+  <h2 class="text-xl font-black">Choose Data Sections (6 Steps)</h2>
+  <p class="text-sm text-slate-600 mt-1">Jo sections select karoge wahi data admin ko send hoga.</p>
+
+  <div class="mt-4 space-y-3">
+    {% for step in step_cards %}
+    <label class="step-box" data-step-box>
+      <div class="flex items-center justify-between gap-2">
+        <div class="font-bold">{{ step.label }}</div>
+        <input type="checkbox" name="steps" value="{{ step.key }}" {% if step.key in selected_default %}checked{% endif %} data-step-checkbox>
+      </div>
+      <div class="mt-3">
+        {% for row in step.rows %}
+          <div class="row-line">
+            <div class="row-label">{{ row.label }}</div>
+            <div class="row-value">
+              <input
+                type="text"
+                name="{{ row.input_name }}"
+                value="{{ row.value }}"
+                class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+              >
+            </div>
+            <label class="text-xs font-semibold text-slate-700">
+              <input type="checkbox" name="{{ row.checkbox_name }}" value="1" {% if row.checked %}checked{% endif %} data-field-checkbox>
+              Select
+            </label>
+          </div>
+        {% empty %}
+          <div class="text-sm text-slate-500">No data added yet.</div>
+        {% endfor %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if required_doc_rows %}
+  <h2 class="text-xl font-black mt-6">Vacancy Extra Documents</h2>
+  <p class="text-sm text-slate-600 mt-1">Admin ne vacancy ke liye jo extra options diye hain wahi yaha fill/upload karo.</p>
+  <div class="mt-3 step-box">
+    <div id="extraDocRows">
+      {% for row in required_doc_rows %}
+      <div class="row-line">
+        <div class="row-label">{{ row.label }} <span class="text-[11px] text-slate-500">({{ row.kind }})</span></div>
+        <div class="row-value">
+          <input
+            type="text"
+            name="{{ row.input_name }}"
+            value="{{ row.value }}"
+            class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+          {% if row.kind != 'Data' %}
+          <input
+            type="file"
+            name="{{ row.file_input_name }}"
+            class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+          >
+          {% endif %}
+        </div>
+        <label class="text-xs font-semibold text-slate-700">
+          <input type="checkbox" name="{{ row.checkbox_name }}" value="1" {% if row.checked %}checked{% endif %} data-extra-doc-checkbox>
+          Select
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="mt-5 flex flex-wrap gap-2">
+    <button type="submit" class="inline-flex rounded-xl bg-emerald-700 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-800">Apply Changes And Send To Admin</button>
+    <a href="{% url 'role_select' %}" class="inline-flex rounded-xl bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-black">Back</a>
+  </div>
+</form>
+<script>
+  (function () {
+    const allTickBtn = document.getElementById("allTickBtn");
+    const allUntickBtn = document.getElementById("allUntickBtn");
+
+    function setAll(selector, checked) {
+      document.querySelectorAll(selector).forEach((el) => { el.checked = checked; });
+    }
+
+    if (allTickBtn) {
+      allTickBtn.addEventListener("click", function () {
+        setAll('[data-step-checkbox]', true);
+        setAll('[data-field-checkbox]', true);
+        setAll('[data-extra-doc-checkbox]', true);
+      });
+    }
+    if (allUntickBtn) {
+      allUntickBtn.addEventListener("click", function () {
+        setAll('[data-step-checkbox]', false);
+        setAll('[data-field-checkbox]', false);
+        setAll('[data-extra-doc-checkbox]', false);
+      });
+    }
+
+    document.querySelectorAll("[data-step-box]").forEach((box) => {
+      const stepCb = box.querySelector("[data-step-checkbox]");
+      const fields = box.querySelectorAll("[data-field-checkbox]");
+      if (!stepCb) return;
+      stepCb.addEventListener("change", function () {
+        fields.forEach((f) => { f.checked = stepCb.checked; });
+      });
+      fields.forEach((f) => {
+        f.addEventListener("change", function () {
+          const anyChecked = Array.from(fields).some((x) => x.checked);
+          stepCb.checked = anyChecked;
+        });
+      });
+    });
+
+  })();
+</script>
+{% endblock %}

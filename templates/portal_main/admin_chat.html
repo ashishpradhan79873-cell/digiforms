@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Chat{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
+  .layout.compact { grid-template-columns:86px 1fr; }
+  .side { background:#fff; border-right:1px solid #dbe3ee; }
+  .layout.compact .side { padding-left:8px; padding-right:8px; }
+  .layout.compact .side .menu-label,
+  .layout.compact .side .brand-sub { display:none; }
+  .layout.compact .side .menu-link { justify-content:center; }
+  .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
+  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
+  .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .panel { padding:16px; min-width:0; }
+  .card { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
+  .bubble { border-radius:12px; padding:10px 12px; border:1px solid #dbe3ef; max-width:80%; }
+  .bubble-user { background:#eff6ff; border-color:#bfdbfe; }
+  .bubble-admin { background:#f8fafc; margin-left:auto; }
+  .thread-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+  .thread-item { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#f8fafc; text-decoration:none; color:inherit; }
+  .thread-item.active { border-color:#0b63ce; background:#eff6ff; }
+  .att-image { margin-top:8px; width:240px; max-width:100%; border-radius:10px; border:1px solid #dbe3ef; display:block; }
+  .att-box { margin-top:8px; border:1px solid #dbe3ef; background:#f8fafc; border-radius:10px; padding:8px 10px; }
+  .msg-line { font-size:12px; color:#64748b; margin-top:4px; }
+  @media (max-width: 1100px){ .layout, .layout.compact { grid-template-columns:1fr; } .panel { padding:12px; } }
+</style>
+
+<div id="adminLayout" class="layout">
+  <aside class="side p-4">
+    <div class="px-3 py-2 border-b border-slate-200">
+      <div class="text-2xl font-black">Digi Form</div>
+      <div class="text-sm text-slate-500 brand-sub">Chat Management</div>
+      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+    </div>
+    <nav class="mt-4 space-y-2">
+      <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
+      <a class="menu-link active" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
+      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="panel space-y-4">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <section class="card p-4">
+      <h1 class="text-3xl font-black">Applicant Chat</h1>
+      <form method="get" class="mt-3 flex flex-wrap gap-2">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search name / username / mobile / ID" class="rounded-lg border border-slate-300 px-3 py-2 text-sm min-w-[280px]">
+        {% if selected_profile %}<input type="hidden" name="profile_id" value="{{ selected_profile.id }}">{% endif %}
+        <button type="submit" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Search</button>
+        <a href="{% url 'admin_chat' %}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Reset</a>
+      </form>
+      <div class="mt-3 thread-grid">
+        {% for item in thread_items %}
+          <a href="{% url 'admin_chat' %}?profile_id={{ item.profile.id }}" class="thread-item {% if selected_profile and item.profile.id == selected_profile.id %}active{% endif %}">
+            <div class="font-bold text-sm">#{{ item.profile.id }} - {{ item.profile.full_name|default:item.profile.user.username }}</div>
+            <div class="text-xs text-slate-500 mt-1">Messages: {{ item.message_count }}</div>
+            {% if item.last_message %}
+              <div class="text-xs text-slate-600 mt-1">
+                {{ item.last_message.created_at|date:"Y-m-d H:i" }} | {% if item.last_message.from_admin %}Admin{% else %}User{% endif %}
+              </div>
+            {% endif %}
+          </a>
+        {% empty %}
+          <div class="text-sm text-slate-500">No applicants found.</div>
+        {% endfor %}
+      </div>
+      {% if selected_profile %}
+      <div class="mt-3 flex flex-wrap gap-2 items-center">
+        <div class="text-sm text-slate-600">Current: <span class="font-bold">#{{ selected_profile.id }} - {{ selected_profile.full_name|default:selected_profile.user.username }}</span></div>
+        <form method="post" action="{% url 'admin_chat_toggle' selected_profile.id %}">
+          {% csrf_token %}
+          <button type="submit" class="rounded-lg px-3 py-2 text-xs font-bold {% if selected_profile.chat_enabled %}bg-amber-600 text-white{% else %}bg-emerald-700 text-white{% endif %}">
+            {% if selected_profile.chat_enabled %}Disable Chat{% else %}Enable Chat{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="card p-4">
+      <h2 class="text-xl font-black">Messages</h2>
+      <div class="mt-4 space-y-3">
+        {% for msg in chat_messages %}
+        <div class="bubble {% if msg.from_admin %}bubble-admin{% else %}bubble-user{% endif %}">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold text-sm">{% if msg.from_admin %}Admin{% else %}User{% endif %}</div>
+            <form method="post" action="{% url 'admin_chat_delete_message' msg.id %}">
+              {% csrf_token %}
+              <button type="submit" class="rounded bg-rose-100 px-2 py-1 text-xs font-bold text-rose-700">Remove</button>
+            </form>
+          </div>
+          {% if msg.message %}
+            <div class="mt-1 text-sm">{{ msg.message|linebreaksbr }}</div>
+          {% endif %}
+          {% if msg.attachment %}
+            <div class="mt-2">
+              {% if msg.attachment_kind == "image" %}
+                <a href="{{ msg.attachment.url }}" target="_blank">
+                  <img src="{{ msg.attachment.url }}" alt="{{ msg.attachment_name }}" class="att-image">
+                </a>
+              {% elif msg.attachment_kind == "pdf" %}
+                <div class="att-box">
+                  <div class="text-xs font-semibold text-slate-600">PDF</div>
+                  <div class="text-sm font-bold text-slate-900">{{ msg.attachment_name }}</div>
+                </div>
+              {% else %}
+                <div class="att-box">
+                  <div class="text-xs font-semibold text-slate-600">Attachment</div>
+                  <div class="text-sm font-bold text-slate-900">{{ msg.attachment_name }}</div>
+                </div>
+              {% endif %}
+              <a href="{{ msg.attachment.url }}" target="_blank" download class="mt-2 inline-block text-sm font-bold text-blue-700 underline">Download</a>
+              <a href="{{ msg.attachment.url }}" target="_blank" class="ml-3 inline-block text-sm font-bold text-emerald-700 underline">Open</a>
+            </div>
+          {% endif %}
+          <div class="msg-line">{{ msg.created_at|date:"Y-m-d H:i" }}</div>
+        </div>
+        {% empty %}
+        <div class="text-sm text-slate-500">No chat messages.</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if selected_profile %}
+    <section class="card p-4">
+      <h2 class="text-xl font-black">Reply</h2>
+      <form method="post" action="{% url 'admin_chat_send' %}" enctype="multipart/form-data" class="mt-3 grid gap-3">
+        {% csrf_token %}
+        <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+        <textarea name="message" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Type admin reply"></textarea>
+        <input type="file" name="attachment" accept=".jpg,.jpeg,.png,.pdf,.webp,.gif" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white">Send Reply</button>
+      </form>
+    </section>
+    {% endif %}
+  </main>
+</div>
+<script>
+  (function () {
+    const layout = document.getElementById("adminLayout");
+    const btn = document.getElementById("sidebarAdjustBtn");
+    if (!layout || !btn) return;
+    const saved = localStorage.getItem("admin_sidebar_compact");
+    if (saved === "1") layout.classList.add("compact");
+    btn.addEventListener("click", () => {
+      layout.classList.toggle("compact");
+      localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Documents{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
+  .layout.compact { grid-template-columns:86px 1fr; }
+  .side { background:#fff; border-right:1px solid #dbe3ee; }
+  .layout.compact .side { padding-left:8px; padding-right:8px; }
+  .layout.compact .side .menu-label,
+  .layout.compact .side .brand-sub { display:none; }
+  .layout.compact .side .menu-link { justify-content:center; }
+  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
+  .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .panel { padding:16px; min-width:0; }
+  .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
+  .mini-input { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:13px; }
+  @media (max-width: 1100px){ .layout, .layout.compact { grid-template-columns:1fr; } .panel { padding:12px; } }
+</style>
+
+<div id="adminLayout" class="layout">
+  <aside class="side p-4">
+    <div class="px-3 py-2 border-b border-slate-200">
+      <div class="text-2xl font-black">Digi Form</div>
+      <div class="text-sm text-slate-500 brand-sub">Document Center</div>
+      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+    </div>
+    <nav class="mt-4 space-y-2">
+      <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link active" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
+      <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
+      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="panel space-y-4">
+    {% if messages %}
+      {% for message in messages %}
+      <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <section class="block p-4">
+      <h2 class="text-xl font-black">Document KB Rules (Admin Control)</h2>
+      <p class="text-sm text-slate-600 mt-1">Yahi rules master data upload me apply honge. Range se bahar file upload reject hoga.</p>
+      <form method="post" class="mt-3 grid grid-cols-1 md:grid-cols-7 gap-2 items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_rule">
+        <div class="md:col-span-2">
+          <label class="text-xs font-bold text-slate-600">Document Name</label>
+          <input type="text" name="name" class="mini-input w-full" placeholder="e.g. Aadhaar Card / PAN Card" required>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Min KB</label>
+          <input type="number" min="1" name="min_kb" class="mini-input w-full" value="10" required>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Max KB</label>
+          <input type="number" min="1" name="max_kb" class="mini-input w-full" value="500" required>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Type</label>
+          <select name="kind" class="mini-input w-full">
+            <option value="any">Any</option>
+            <option value="image">Image</option>
+            <option value="pdf">PDF</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Exact KB (optional)</label>
+          <input type="number" min="1" name="exact_kb" class="mini-input w-full" placeholder="e.g. 100">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Exact W x H (optional)</label>
+          <div class="flex gap-1">
+            <input type="number" min="1" name="exact_width" class="mini-input w-full" placeholder="W">
+            <input type="number" min="1" name="exact_height" class="mini-input w-full" placeholder="H">
+          </div>
+        </div>
+        <div class="md:col-span-7 flex items-center gap-3">
+          <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
+          <button type="submit" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Save Rule</button>
+        </div>
+      </form>
+
+      <div class="mt-3 overflow-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr><th class="px-3 py-2 text-left">Name</th><th class="px-3 py-2 text-left">KB Rule</th><th class="px-3 py-2 text-left">Type</th><th class="px-3 py-2 text-left">Exact Size</th><th class="px-3 py-2 text-left">Active</th><th class="px-3 py-2 text-left">Action</th></tr>
+          </thead>
+          <tbody>
+            {% for r in rules %}
+            <tr class="border-t border-slate-200">
+              <td class="px-3 py-2">{{ r.name }}</td>
+              <td class="px-3 py-2">{% if r.exact_kb %}Exact {{ r.exact_kb }} KB{% else %}{{ r.min_kb }} - {{ r.max_kb }} KB{% endif %}</td>
+              <td class="px-3 py-2">{{ r.get_kind_display }}</td>
+              <td class="px-3 py-2">{% if r.exact_width or r.exact_height %}{{ r.exact_width|default:'*' }} x {{ r.exact_height|default:'*' }}{% else %}-{% endif %}</td>
+              <td class="px-3 py-2">{{ r.is_active|yesno:"Yes,No" }}</td>
+              <td class="px-3 py-2">
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_rule">
+                  <input type="hidden" name="rule_id" value="{{ r.id }}">
+                  <button type="submit" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="px-3 py-3 text-slate-500">No rules yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  (function () {
+    const layout = document.getElementById("adminLayout");
+    const btn = document.getElementById("sidebarAdjustBtn");
+    if (!layout || !btn) return;
+    const saved = localStorage.getItem("admin_sidebar_compact");
+    if (saved === "1") layout.classList.add("compact");
+    btn.addEventListener("click", () => {
+      layout.classList.toggle("compact");
+      localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
+    });
+  })();
+</script>
+{% endblock %}

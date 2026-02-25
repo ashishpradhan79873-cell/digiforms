@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}Government Recruitment Portal{% endblock %}
+{% block body_class %}min-h-screen bg-slate-200 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1380px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .nav-top { background:#073266; color:#fff; }
+  .page-wrap { padding: 18px 20px 26px; }
+  .profile-card, .vacancy-card { background:#fff; border:1px solid #d7dde7; border-radius:16px; }
+  .vacancy-card { overflow:hidden; position:relative; }
+  .vacancy-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:22px; }
+  .btn-apply { background:#1f8a3c; color:#fff; font-weight:900; border-radius:10px; padding:10px 14px; text-align:center; width:100%; display:block; }
+  .btn-secondary { background:#fff; border:1px solid #c8d2df; color:#0f172a; font-weight:800; border-radius:10px; padding:10px 14px; }
+  .status-pill { border-radius:999px; font-weight:800; font-size:12px; padding:4px 10px; }
+  .status-pending { background:#f9e6a3; color:#7a5a03; }
+  .status-approved { background:#c9f2d7; color:#0c6d3d; }
+  .status-under_review { background:#d8e7ff; color:#214fa8; }
+  .status-rejected { background:#ffd8d8; color:#9e1f2c; }
+  .status-cancelled { background:#e2e8f0; color:#334155; }
+  .vacancy-top { display:grid; grid-template-columns:1.1fr .9fr; gap:10px; align-items:stretch; min-height:190px; }
+  .vacancy-media { border-radius:12px; overflow:hidden; border:1px solid #dbe3ef; background:#eef2ff; }
+  .vacancy-media img { width:100%; height:100%; object-fit:cover; display:block; }
+  .myapps-card { background:#fff; border:1px solid #d7dde7; border-radius:16px; }
+  .myapps-table { width:100%; border-collapse:collapse; }
+  .myapps-table th, .myapps-table td { padding:10px 12px; border-top:1px solid #e2e8f0; font-size:13px; text-align:left; }
+  .myapps-table th { background:#f8fafc; color:#475569; font-weight:800; border-top:none; }
+  .user-pill { display:flex; align-items:center; gap:10px; border-left:1px solid rgba(255,255,255,.25); padding-left:12px; }
+  .user-avatar { width:40px; height:40px; border-radius:999px; background:rgba(255,255,255,.22); display:grid; place-items:center; font-weight:900; }
+  @media (max-width: 1100px) { .vacancy-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width: 850px) { .vacancy-top { grid-template-columns:1fr; } }
+  @media (max-width: 700px) { .vacancy-grid { grid-template-columns:1fr; } .page-wrap{padding:12px;} }
+  @media (max-width: 640px) {
+    .nav-top { padding:10px; flex-wrap:wrap; }
+    .nav-top .font-extrabold.text-2xl { font-size:18px; }
+    .user-pill { border-left:none; padding-left:0; }
+    .user-avatar { width:32px; height:32px; font-size:12px; }
+    .profile-card { padding:14px; }
+    .vacancy-card { padding:12px; }
+  }
+</style>
+
+<header class="nav-top px-4 py-3 flex items-center justify-between gap-3">
+  <div class="flex items-center gap-3">
+    <div class="rounded-lg bg-white/15 p-2"><span class="material-symbols-outlined">work</span></div>
+    <div class="font-extrabold text-2xl leading-none">Government Recruitment Portal</div>
+  </div>
+  <div class="flex items-center gap-3">
+    <a href="{% url 'user_chat' %}" class="rounded-lg bg-white/15 px-3 py-2 text-sm font-bold">Chat</a>
+    <a href="{% url 'role_select' %}" class="rounded-full bg-white/15 p-2" title="Back to portal select">
+      <span class="material-symbols-outlined">notifications</span>
+    </a>
+    <div class="user-pill">
+      <div class="leading-tight">
+        <div class="font-extrabold">{{ profile.full_name|default:request.user.username }}</div>
+        <div class="text-xs text-blue-100">Applicant ID: #{{ profile.id }}</div>
+      </div>
+      <div class="user-avatar">{{ request.user.username|first|upper }}</div>
+    </div>
+  </div>
+</header>
+
+<div class="page-wrap">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <section class="profile-card p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-4xl font-black leading-tight">{{ profile.full_name|default:request.user.username }}</h1>
+      <p class="text-sm md:text-lg text-slate-600">Applicant ID: #{{ profile.id }}</p>
+    </div>
+    <span class="rounded-full border border-emerald-300 bg-emerald-100 px-4 md:px-6 py-2 md:py-3 text-xs md:text-xl font-black text-emerald-700">
+      Master Profile: {{ profile.completion_percent }}% Complete
+    </span>
+  </section>
+
+  <section class="mt-8">
+    <h2 class="text-2xl md:text-4xl font-black">Active Vacancies</h2>
+    <div class="vacancy-grid mt-5">
+      {% for card in vacancy_cards %}
+      {% with vacancy=card.vacancy app=card.application %}
+      <article class="vacancy-card p-5">
+        <div class="vacancy-top">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="material-symbols-outlined text-4xl text-blue-900">{{ vacancy.icon_name|default:'work' }}</span>
+              {% if app %}
+                <span class="status-pill status-{{ app.status }}">{{ app.get_status_display }}</span>
+              {% endif %}
+            </div>
+            <h3 class="mt-3 text-xl md:text-2xl font-black leading-tight">{{ vacancy.title }}</h3>
+            <p class="text-sm md:text-lg text-slate-600 mt-1">{{ vacancy.organization }}</p>
+            <p class="text-sm md:text-base text-slate-500 mt-3">Last date: {{ vacancy.last_date|date:'Y-m-d' }}</p>
+          </div>
+          <div class="vacancy-media">
+            {% if vacancy.image %}
+              <img src="{{ vacancy.image.url }}" alt="{{ vacancy.title }}">
+            {% else %}
+              <div class="h-full w-full grid place-items-center text-slate-500 text-sm">No Image</div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <form method="post" action="{% url 'apply_vacancy' vacancy.id %}" class="flex-1">
+            {% csrf_token %}
+            <button class="btn-apply" type="submit">{% if app and app.status != 'cancelled' %}Applied{% else %}Apply Now{% endif %}</button>
+          </form>
+          {% if app and app.status != 'cancelled' %}
+          <form method="post" action="{% url 'cancel_own_application' app.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="source" value="government">
+            <button class="btn-secondary" type="submit">Cancel</button>
+          </form>
+          {% endif %}
+        </div>
+      </article>
+      {% endwith %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="mt-8">
+    <h2 class="text-3xl font-black">My Applications</h2>
+    <div class="myapps-card mt-4 overflow-x-auto">
+      <table class="myapps-table">
+        <thead>
+          <tr>
+            <th>Form/Vacancy</th>
+            <th>Status</th>
+            <th>Applied At</th>
+            <th>Cancelled At</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for app in my_applications %}
+          <tr>
+            <td>{{ app.vacancy.title }}</td>
+            <td><span class="status-pill status-{{ app.status }}">{{ app.get_status_display }}</span></td>
+            <td>{{ app.applied_at|date:'Y-m-d H:i' }}</td>
+            <td>{% if app.cancelled_at %}{{ app.cancelled_at|date:'Y-m-d H:i' }}{% else %}-{% endif %}</td>
+            <td>
+              {% if app.status != 'cancelled' %}
+              <form method="post" action="{% url 'cancel_own_application' app.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="source" value="government">
+                <button class="btn-secondary" type="submit">Cancel</button>
+              </form>
+              {% else %}
+              <span class="text-slate-500 text-xs">Cancelled</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-slate-500">No history yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
