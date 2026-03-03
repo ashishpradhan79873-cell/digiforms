@@ -1,0 +1,467 @@
+{% extends 'base.html' %}
+
+{% block title %}Master Data - {{ current_step|title }}{% endblock %}
+{% block body_class %}min-h-screen bg-[#eef2f7] text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1450px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for message in messages %}
+  <div class="m-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+<style>
+  .layout-wrap { display: grid; grid-template-columns: 290px 1fr; min-height: 100vh; }
+  .sidebar { background: #f6f8fb; border-right: 1px solid #d7dfeb; }
+  .mobile-step-switch { display:none; }
+  .step-menu { display:none; position:absolute; right:0; top:42px; min-width:220px; background:#fff; border:1px solid #d7dfeb; border-radius:10px; box-shadow:0 14px 32px rgba(15,23,42,.14); z-index:30; padding:8px; }
+  .step-menu.open { display:block; }
+  .step-menu-link { display:flex; align-items:center; gap:8px; border-radius:8px; padding:8px 10px; color:#334155; font-weight:700; font-size:13px; text-decoration:none; }
+  .step-menu-link.active { background:#e3efff; color:#1769d4; }
+  .brand-block { padding: 20px; border-bottom: 1px solid #d7dfeb; }
+  .nav-link { display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px; font-weight:700; color:#334155; }
+  .nav-link.active { background:#e3efff; color:#1769d4; border-left:4px solid #1769d4; }
+  .panel { padding: 22px 28px; }
+  .top-title { font-size: 36px; line-height: 1.1; font-weight: 900; color:#0f172a; }
+  .top-subtitle { margin-top:6px; color:#475569; font-size:14px; }
+
+  .form-card {
+    margin-top: 16px;
+    background: #fff;
+    border: 1px solid #d6deea;
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e3e9f2;
+  }
+  .card-title { font-size: 27px; font-weight: 900; color:#0f172a; }
+  .card-subtitle { margin-top: 4px; font-size: 18px; color:#475569; }
+  .card-note {
+    margin-top: 14px;
+    background: #f8fbff;
+    border: 1px solid #d9e7fb;
+    color: #365172;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .card-body { padding: 18px 20px; }
+  .section-label {
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f172a;
+    margin-bottom: 14px;
+  }
+  .form-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .field label { display:block; font-size: 13px; font-weight: 800; color:#0f172a; margin-bottom: 6px; }
+  .input, .select, .textarea {
+    width:100%;
+    border:1px solid #c6d2e3;
+    border-radius:8px;
+    padding: 9px 11px;
+    font-size: 14px;
+    color:#0f172a;
+    background:#fff;
+  }
+  .textarea { min-height: 74px; resize: vertical; }
+  .span2 { grid-column: span 2; }
+  .mini-box {
+    margin-top: 14px;
+    border: 1px solid #d8e1ee;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .mini-head {
+    background:#edf3fb;
+    border-bottom:1px solid #d8e1ee;
+    padding:8px 10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    font-weight:800;
+    color:#3c4f68;
+  }
+  .mini-table { width:100%; border-collapse: collapse; }
+  .mini-table th, .mini-table td {
+    border:1px solid #d8e1ee;
+    padding: 8px;
+    font-size:13px;
+    vertical-align: middle;
+    background:#fff;
+  }
+  .card-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #e1e8f3;
+    background: #f9fbfe;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+  }
+  .btn-primary, .btn-secondary, .btn-soft, .btn-danger {
+    border-radius: 10px;
+    font-weight: 800;
+  }
+  .btn-primary { background:#1676f3; color:#fff; border:1px solid #1676f3; padding: 9px 16px; font-size: 14px; }
+  .btn-secondary { background:#fff; color:#1f314c; border:1px solid #c7d1df; padding: 9px 14px; font-size: 14px; }
+  .btn-soft { background:#e7f0ff; color:#1668d6; border:1px solid #b7c9ea; padding: 8px 12px; font-size:12px; }
+  .btn-danger { background:#fff1f1; color:#b42323; border:1px solid #f1c0c0; padding: 5px 8px; font-size:12px; }
+
+  .doc-preview { width:90px; height:90px; object-fit:contain; border:1px solid #c6d2e3; border-radius:8px; background:#f4f7fb; display:none; margin-top:6px; padding:2px; }
+  .doc-preview-large { width:140px; height:140px; }
+  .file-meta { display:flex; flex-direction:column; gap:4px; }
+  .file-name { font-size:12px; color:#475569; word-break:break-all; }
+
+  @media (max-width: 1024px) {
+    .layout-wrap { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    .span2 { grid-column: span 1; }
+    .panel { padding: 18px; }
+    .top-title { font-size: 30px; }
+    .card-title { font-size: 24px; }
+    .card-subtitle { font-size: 16px; }
+    .section-label { font-size: 20px; }
+  }
+  @media (max-width: 640px) {
+    .layout-wrap { grid-template-columns: 1fr; }
+    .sidebar { display:none; }
+    .mobile-step-switch { display:block; position:relative; margin-bottom:10px; }
+    .mobile-step-head { display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #d7dfeb; background:#fff; border-radius:10px; padding:8px 10px; }
+    .mobile-step-title { font-size:13px; font-weight:800; color:#0f172a; }
+    .step-dot-btn { border:1px solid #c7d1df; background:#fff; border-radius:8px; width:34px; height:30px; display:grid; place-items:center; color:#334155; }
+    .panel { padding: 12px; }
+    .brand-block { padding: 12px; }
+    .brand-block .text-\[30px\] { font-size: 20px; }
+    .brand-block .text-\[15px\] { font-size: 12px; }
+    .nav-link { padding: 9px 10px; }
+    .nav-link .text-\[18px\] { font-size: 14px; }
+    .top-title { font-size: 22px; }
+    .top-subtitle { font-size: 12px; }
+    .card-head { padding: 12px 14px; }
+    .card-title { font-size: 19px; }
+    .card-note { font-size: 11px; }
+    .card-body { padding: 12px 14px; }
+    .section-label { font-size: 17px; margin-bottom: 10px; }
+    .input, .select, .textarea { font-size: 13px; padding: 8px 9px; }
+    .mini-table th, .mini-table td { padding: 6px; font-size: 12px; }
+    .card-footer { padding: 10px 14px; flex-wrap: wrap; }
+    .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  }
+</style>
+
+<div class="layout-wrap">
+  <aside class="sidebar">
+    <div class="brand-block">
+      <div class="flex items-center gap-3">
+        <div class="rounded-xl bg-blue-600 p-3 text-white"><span class="material-symbols-outlined text-xl">dashboard</span></div>
+        <div>
+          <p class="text-[30px] font-black leading-none">Digi Form</p>
+          <p class="text-[15px] text-slate-600">Student Portal<br>Academic Session 2024</p>
+        </div>
+      </div>
+    </div>
+
+    <nav class="p-4 space-y-2">
+      {% for step in steps %}
+      <a href="{% url step.url_name %}" class="nav-link {% if step.active %}active{% endif %}">
+        <span class="material-symbols-outlined text-lg">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% else %}table{% endif %}</span>
+        <span class="text-[18px]">{{ step.label }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="p-4 mt-4 border-t border-slate-300">
+      <a href="{% url 'logout' %}" class="flex items-center gap-2 font-semibold text-slate-700"><span class="material-symbols-outlined">logout</span>Logout</a>
+      <div class="mt-3 rounded-xl bg-slate-200/70 p-3">
+        <p class="font-bold">{{ profile.full_name|default:request.user.username }}</p>
+        <p class="text-sm text-slate-600">{{ profile.completion_percent }}% complete</p>
+      </div>
+    </div>
+  </aside>
+
+  <main class="panel">
+    <div class="mobile-step-switch">
+      <div class="mobile-step-head">
+        <div class="mobile-step-title">Step {{ current_step_number }}/{{ total_steps }}: {{ current_step|title }}</div>
+        <button id="stepMenuToggle" type="button" class="step-dot-btn" aria-label="Open steps menu">
+          <span class="material-symbols-outlined" style="font-size:18px;">more_vert</span>
+        </button>
+      </div>
+      <div id="stepMenu" class="step-menu">
+        {% for step in steps %}
+          <a href="{% url step.url_name %}" class="step-menu-link {% if step.active %}active{% endif %}">
+            <span class="material-symbols-outlined" style="font-size:17px;">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% else %}table{% endif %}</span>
+            {{ step.label }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h1 class="top-title">Student Portal Form</h1>
+        <p class="top-subtitle">Professional IAS style card layout</p>
+      </div>
+      <a href="{% url 'dashboard' %}" class="btn-secondary">Back</a>
+    </div>
+
+    <section class="form-card">
+
+      {% if current_step == 'personal' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-head">
+          <div class="card-title">Section 1: Personal Details</div>
+          <div class="card-note">Fill applicant identity fields. Add custom rows if needed.</div>
+        </div>
+        <div class="card-body">
+          <div class="section-label">Full Identification</div>
+          <div class="form-grid">
+            <div class="field"><label>Full Name *</label><input class="input" type="text" name="full_name" value="{{ profile.full_name }}" required></div>
+            <div class="field"><label>Father Name *</label><input class="input" type="text" name="father_name" value="{{ profile.father_name }}"></div>
+            <div class="field"><label>Mother Name</label><input class="input" type="text" name="mother_name" value="{{ profile.mother_name }}"></div>
+            <div class="field"><label>Date Of Birth</label><input class="input" type="date" name="dob" value="{{ profile.dob|date:'Y-m-d' }}"></div>
+            <div class="field"><label>Gender</label><select class="select" name="gender"><option value="M" {% if profile.gender == 'M' %}selected{% endif %}>Male</option><option value="F" {% if profile.gender == 'F' %}selected{% endif %}>Female</option><option value="O" {% if profile.gender == 'O' %}selected{% endif %}>Other</option></select></div>
+            <div class="field"><label>Category</label><select class="select" name="category"><option value="General" {% if profile.category == 'General' %}selected{% endif %}>General</option><option value="OBC" {% if profile.category == 'OBC' %}selected{% endif %}>OBC</option><option value="SC" {% if profile.category == 'SC' %}selected{% endif %}>SC</option><option value="ST" {% if profile.category == 'ST' %}selected{% endif %}>ST</option></select></div>
+            <div class="field"><label>Mobile Number</label><input class="input" type="text" name="mobile" value="{{ profile.mobile }}"></div>
+            <div class="field"><label>Email ID</label><input class="input" type="email" name="email" value="{{ profile.email }}"></div>
+          </div>
+
+          <div class="mini-box">
+            <div class="mini-head"><span>Custom Rows</span><button type="button" id="add-personal-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Field</th><th>Value</th><th>Action</th></tr></thead><tbody id="personal-table">{% for row in personal_extra_rows %}<tr><td><input class="input" type="text" name="personal_extra_label[]" value="{{ row.label }}"></td><td><input class="input" type="text" name="personal_extra_value[]" value="{{ row.value }}"></td><td class="text-center"><button type="button" class="remove-personal-row btn-danger">X</button></td></tr>{% endfor %}</tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'address' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-head"><div class="card-title">Section 2: Address Details</div><div class="card-note">Present and permanent address in professional card format.</div></div>
+        <div class="card-body">
+          <div class="section-label">Present Address</div>
+          <div class="form-grid">
+            <div class="field"><label>State</label><input class="input" type="text" name="present_state" value="{{ profile.present_state }}"></div>
+            <div class="field"><label>District</label><input class="input" type="text" name="present_district" value="{{ profile.present_district }}"></div>
+            <div class="field"><label>City / Village</label><input class="input" type="text" name="present_city" value="{{ profile.present_city }}"></div>
+            <div class="field"><label>Pin Code</label><input class="input" type="text" name="present_pincode" value="{{ profile.present_pincode }}"></div>
+            <div class="field span2"><label>Full Address</label><textarea class="textarea" name="present_address">{{ profile.present_address }}</textarea></div>
+          </div>
+
+          <div class="section-label mt-6">Permanent Address</div>
+          <div class="mb-4"><label class="inline-flex items-center gap-2 text-sm font-semibold"><input type="checkbox" name="same_as_present" {% if profile.permanent_same_as_present %}checked{% endif %}> Correspondence Address is same as Permanent</label></div>
+          <div class="form-grid">
+            <div class="field"><label>State</label><input class="input" type="text" name="permanent_state" value="{{ profile.permanent_state }}"></div>
+            <div class="field"><label>District</label><input class="input" type="text" name="permanent_district" value="{{ profile.permanent_district }}"></div>
+            <div class="field"><label>Pin Code</label><input class="input" type="text" name="permanent_pincode" value="{{ profile.permanent_pincode }}"></div>
+            <div class="field span2"><label>Full Address</label><textarea class="textarea" name="permanent_full_address">{{ profile.permanent_full_address }}</textarea></div>
+          </div>
+
+          <div class="mini-box">
+            <div class="mini-head"><span>Custom Rows</span><button type="button" id="add-address-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Field</th><th>Value</th><th>Action</th></tr></thead><tbody id="address-table">{% for row in address_extra_rows %}<tr><td><input class="input" type="text" name="address_extra_label[]" value="{{ row.label }}"></td><td><input class="input" type="text" name="address_extra_value[]" value="{{ row.value }}"></td><td class="text-center"><button type="button" class="remove-address-row btn-danger">X</button></td></tr>{% endfor %}</tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'academic' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-head"><div class="card-title">Section 3: Academic Details</div><div class="card-note">10th, 12th and graduation details.</div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>10th Board Name</label><input class="input" type="text" name="tenth_board" value="{{ profile.tenth_board }}"></div>
+            <div class="field"><label>10th Roll Number</label><input class="input" type="text" name="tenth_roll_number" value="{{ profile.tenth_roll_number }}"></div>
+            <div class="field"><label>10th Percentage</label><input class="input" type="text" name="tenth_percentage" value="{{ profile.tenth_percentage }}"></div>
+            <div class="field"><label>12th Board Name</label><input class="input" type="text" name="twelfth_board" value="{{ profile.twelfth_board }}"></div>
+            <div class="field"><label>12th Roll Number</label><input class="input" type="text" name="twelfth_roll_number" value="{{ profile.twelfth_roll_number }}"></div>
+            <div class="field"><label>12th Percentage</label><input class="input" type="text" name="twelfth_percentage" value="{{ profile.twelfth_percentage }}"></div>
+            <div class="field span2"><label>Graduation</label><input class="input" type="text" name="graduation" value="{{ profile.graduation }}"></div>
+          </div>
+          <div class="mini-box">
+            <div class="mini-head"><span>Custom Rows</span><button type="button" id="add-academic-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Field</th><th>Value</th><th>Action</th></tr></thead><tbody id="academic-table">{% for row in academic_extra_rows %}<tr><td><input class="input" type="text" name="academic_extra_label[]" value="{{ row.label }}"></td><td><input class="input" type="text" name="academic_extra_value[]" value="{{ row.value }}"></td><td class="text-center"><button type="button" class="remove-academic-row btn-danger">X</button></td></tr>{% endfor %}</tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'college' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-head"><div class="card-title">Section 4: College Details</div><div class="card-note">College and enrollment information.</div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>College Name</label><input class="input" type="text" name="college_name" value="{{ profile.college_name }}"></div>
+            <div class="field"><label>University Name</label><input class="input" type="text" name="university_name" value="{{ profile.university_name }}"></div>
+            <div class="field"><label>Course</label><input class="input" type="text" name="course" value="{{ profile.course }}"></div>
+            <div class="field"><label>Year / Semester</label><input class="input" type="text" name="year_semester" value="{{ profile.year_semester }}"></div>
+            <div class="field span2"><label>Enrollment Number</label><input class="input" type="text" name="enrollment_number" value="{{ profile.enrollment_number }}"></div>
+          </div>
+          <div class="mini-box">
+            <div class="mini-head"><span>Custom Rows</span><button type="button" id="add-college-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Field</th><th>Value</th><th>Action</th></tr></thead><tbody id="college-table">{% for row in college_extra_rows %}<tr><td><input class="input" type="text" name="college_extra_label[]" value="{{ row.label }}"></td><td><input class="input" type="text" name="college_extra_value[]" value="{{ row.value }}"></td><td class="text-center"><button type="button" class="remove-college-row btn-danger">X</button></td></tr>{% endfor %}</tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'bank' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-head"><div class="card-title">Section 5: Bank / Account Details</div><div class="card-note">Bank details should match passbook records.</div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>Account Holder Name</label><input class="input" type="text" name="account_holder_name" value="{{ profile.account_holder_name }}"></div>
+            <div class="field"><label>Bank Name</label><input class="input" type="text" name="bank_name" value="{{ profile.bank_name }}"></div>
+            <div class="field"><label>Account Number</label><input class="input" type="text" name="account_number" value="{{ profile.account_number }}"></div>
+            <div class="field"><label>IFSC Code</label><input class="input" type="text" name="ifsc_code" value="{{ profile.ifsc_code }}"></div>
+            <div class="field"><label>Branch Name</label><input class="input" type="text" name="branch_name" value="{{ profile.branch_name }}"></div>
+            <div class="field"><label>Aadhaar Linked</label><select class="select" name="aadhaar_linked"><option value="">Select</option><option value="yes" {% if profile.aadhaar_linked == 'yes' %}selected{% endif %}>Yes</option><option value="no" {% if profile.aadhaar_linked == 'no' %}selected{% endif %}>No</option></select></div>
+          </div>
+          <div class="mini-box">
+            <div class="mini-head"><span>Custom Rows</span><button type="button" id="add-bank-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Field</th><th>Value</th><th>Action</th></tr></thead><tbody id="bank-table">{% for row in bank_extra_rows %}<tr><td><input class="input" type="text" name="bank_extra_label[]" value="{{ row.label }}"></td><td><input class="input" type="text" name="bank_extra_value[]" value="{{ row.value }}"></td><td class="text-center"><button type="button" class="remove-bank-row btn-danger">X</button></td></tr>{% endfor %}</tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'documents' %}
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="card-head"><div class="card-title">Section 6: Document Upload</div><div class="card-note">Photo and signature preview appears immediately after selecting file.</div></div>
+        <div class="card-body">
+          <div class="mini-box">
+            <table class="mini-table">
+              <thead><tr><th>Document Type</th><th>Required</th><th>Upload</th><th>Status / Preview</th></tr></thead>
+              <tbody>
+                <tr><td>Passport Size Photo</td><td>Yes</td><td><input id="passport-photo-input" data-preview-target="passport-photo-preview" data-file-name-target="passport-photo-name" type="file" name="passport_photo" accept="image/*" class="input"></td><td><div class="file-meta">{% if profile.photo %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="passport-photo-name" class="file-name"></span><img id="passport-photo-preview" class="doc-preview doc-preview-large" src="{% if profile.photo %}{{ profile.photo.url }}{% endif %}" alt="photo" {% if profile.photo %}style="display:block"{% endif %}></div></td></tr>
+                <tr><td>Signature</td><td>Yes</td><td><input id="signature-input" data-preview-target="signature-preview" data-file-name-target="signature-name" type="file" name="signature" accept="image/*" class="input"></td><td><div class="file-meta">{% if profile.signature %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="signature-name" class="file-name"></span><img id="signature-preview" class="doc-preview doc-preview-large" src="{% if profile.signature %}{{ profile.signature.url }}{% endif %}" alt="sign" {% if profile.signature %}style="display:block"{% endif %}></div></td></tr>
+                {% for field_name, title, required in document_specs %}
+                <tr><td>{{ title }}</td><td>{{ required }}</td><td><input type="file" name="{{ field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}"></td><td><div class="file-meta">{% if title in uploaded_map %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="doc-name-{{ forloop.counter }}" class="file-name"></span><img id="doc-preview-{{ forloop.counter }}" class="doc-preview" alt="document preview"></div></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mini-box mt-4">
+            <div class="mini-head"><span>Additional Documents</span><button type="button" id="add-doc-row-btn" class="btn-soft">+ Add Row</button></div>
+            <table class="mini-table"><thead><tr><th>Document Name</th><th>Upload</th><th>Preview</th><th>Action</th></tr></thead><tbody id="doc-extra-table"><tr><td><input type="text" name="doc_title[]" class="input" placeholder="Document name"></td><td><input type="file" name="doc_file[]" class="input" data-preview-target="extra-doc-preview-1" data-file-name-target="extra-doc-name-1"></td><td><div class="file-meta"><span id="extra-doc-name-1" class="file-name"></span><img id="extra-doc-preview-1" class="doc-preview" alt="extra document preview"></div></td><td class="text-center"><button type="button" class="remove-doc-row btn-danger">X</button></td></tr></tbody></table>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'dashboard' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Finish</button></div>
+      </form>
+      {% endif %}
+
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  function bindRemove(selector, tableId) {
+    document.querySelectorAll(selector).forEach((btn) => {
+      btn.onclick = function () {
+        const table = document.getElementById(tableId);
+        if (table && table.querySelectorAll('tr').length > 0) {
+          btn.closest('tr').remove();
+        }
+      };
+    });
+  }
+
+  let extraDocCounter = 1;
+  function addRow(btnId, tableId, labelName, valueName, removeClass, isFile) {
+    const addBtn = document.getElementById(btnId);
+    if (!addBtn) return;
+    addBtn.onclick = function () {
+      const table = document.getElementById(tableId);
+      const row = document.createElement('tr');
+      if (isFile) {
+        extraDocCounter += 1;
+        const previewId = 'extra-doc-preview-' + extraDocCounter;
+        const nameId = 'extra-doc-name-' + extraDocCounter;
+        row.innerHTML = '<td><input type="text" name="doc_title[]" class="input" placeholder="Document name"></td><td><input type="file" name="doc_file[]" class="input" data-preview-target="' + previewId + '" data-file-name-target="' + nameId + '"></td><td><div class="file-meta"><span id="' + nameId + '" class="file-name"></span><img id="' + previewId + '" class="doc-preview" alt="extra document preview"></div></td><td class="text-center"><button type="button" class="' + removeClass + ' btn-danger">X</button></td>';
+      } else {
+        row.innerHTML = '<td><input type="text" name="' + labelName + '[]" class="input" placeholder="Custom field"></td><td><input type="text" name="' + valueName + '[]" class="input" placeholder="Value"></td><td class="text-center"><button type="button" class="' + removeClass + ' btn-danger">X</button></td>';
+      }
+      table.appendChild(row);
+      bindRemove('.' + removeClass, tableId);
+      bindFilePreviewHandlers();
+    };
+    bindRemove('.' + removeClass, tableId);
+  }
+
+  addRow('add-personal-row-btn', 'personal-table', 'personal_extra_label', 'personal_extra_value', 'remove-personal-row', false);
+  addRow('add-address-row-btn', 'address-table', 'address_extra_label', 'address_extra_value', 'remove-address-row', false);
+  addRow('add-academic-row-btn', 'academic-table', 'academic_extra_label', 'academic_extra_value', 'remove-academic-row', false);
+  addRow('add-college-row-btn', 'college-table', 'college_extra_label', 'college_extra_value', 'remove-college-row', false);
+  addRow('add-bank-row-btn', 'bank-table', 'bank_extra_label', 'bank_extra_value', 'remove-bank-row', false);
+  addRow('add-doc-row-btn', 'doc-extra-table', '', '', 'remove-doc-row', true);
+
+  function bindFilePreviewHandlers() {
+    document.querySelectorAll('input[type="file"][data-preview-target]').forEach((input) => {
+      if (input.dataset.boundPreview === '1') return;
+      input.dataset.boundPreview = '1';
+      input.addEventListener('change', function () {
+        const file = input.files && input.files[0];
+        const preview = document.getElementById(input.dataset.previewTarget);
+        const nameEl = document.getElementById(input.dataset.fileNameTarget);
+        if (nameEl) nameEl.textContent = file ? file.name : '';
+        if (!preview) return;
+        if (!file) {
+          preview.style.display = 'none';
+          preview.removeAttribute('src');
+          return;
+        }
+        if (file.type && file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+          };
+          reader.readAsDataURL(file);
+        } else {
+          const ext = (file.name || '').split('.').pop().toUpperCase() || 'FILE';
+          const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='120'><rect width='100%' height='100%' fill='#eef2ff'/><text x='50%' y='48%' dominant-baseline='middle' text-anchor='middle' fill='#334155' font-size='18' font-family='Arial'>${ext}</text><text x='50%' y='70%' dominant-baseline='middle' text-anchor='middle' fill='#64748b' font-size='12' font-family='Arial'>Preview not available</text></svg>`;
+          preview.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          preview.style.display = 'block';
+        }
+      });
+    });
+  }
+
+  bindFilePreviewHandlers();
+
+  const stepMenuBtn = document.getElementById('stepMenuToggle');
+  const stepMenu = document.getElementById('stepMenu');
+  if (stepMenuBtn && stepMenu) {
+    stepMenuBtn.addEventListener('click', function () {
+      stepMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', function (e) {
+      if (!stepMenu.contains(e.target) && !stepMenuBtn.contains(e.target)) {
+        stepMenu.classList.remove('open');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

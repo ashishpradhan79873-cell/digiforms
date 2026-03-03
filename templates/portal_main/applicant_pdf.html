@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Applicant {{ application.id }} PDF</title>
+  <style>
+    body { font-family: Arial, sans-serif; color:#0f172a; margin:22px; }
+    h1 { margin:0; font-size:24px; }
+    h2 { margin:18px 0 8px; font-size:16px; border-bottom:1px solid #d5dce7; padding-bottom:4px; }
+    .meta { margin-top:8px; font-size:13px; color:#334155; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    td { border:1px solid #d5dce7; padding:6px 8px; font-size:12px; vertical-align:top; }
+    td:first-child { width:220px; font-weight:700; background:#f8fafc; }
+    .doc a { color:#0b63ce; text-decoration:none; }
+    .print-btn { margin-top:14px; display:inline-block; padding:8px 12px; border-radius:8px; background:#0b63ce; color:#fff; text-decoration:none; font-weight:700; }
+    @media print { .print-btn { display:none; } body { margin:0.5cm; } }
+  </style>
+</head>
+<body>
+  <h1>Applicant Full Details</h1>
+  <div class="meta">
+    Application ID: #{{ application.id }} |
+    Applicant ID: #{{ profile.id }} |
+    Status: {{ status_label }} |
+    Post: {{ application.vacancy.title }} |
+    Applied: {{ application.applied_at|date:"Y-m-d H:i" }}
+  </div>
+  <a class="print-btn" href="#" onclick="window.print();return false;">Print / Save as PDF</a>
+
+  <h2>Personal Details</h2>
+  <table>
+    <tr><td>Full Name</td><td>{{ profile.full_name }}</td></tr>
+    <tr><td>Father</td><td>{{ profile.father_name }}</td></tr>
+    <tr><td>Mother</td><td>{{ profile.mother_name }}</td></tr>
+    <tr><td>DOB</td><td>{{ profile.dob|date:'Y-m-d' }}</td></tr>
+    <tr><td>Gender</td><td>{{ profile.get_gender_display }}</td></tr>
+    <tr><td>Category</td><td>{{ profile.category }}</td></tr>
+    <tr><td>Aadhaar</td><td>{{ profile.aadhar }}</td></tr>
+    <tr><td>Mobile</td><td>{{ profile.mobile }}</td></tr>
+    <tr><td>Email</td><td>{{ profile.email }}</td></tr>
+  </table>
+
+  <h2>Address</h2>
+  <table>
+    <tr><td>Present Address</td><td>{{ profile.present_address }}</td></tr>
+    <tr><td>Present City</td><td>{{ profile.present_city }}</td></tr>
+    <tr><td>Present District</td><td>{{ profile.present_district }}</td></tr>
+    <tr><td>Present State</td><td>{{ profile.present_state }}</td></tr>
+    <tr><td>Present Pincode</td><td>{{ profile.present_pincode }}</td></tr>
+    <tr><td>Permanent Address</td><td>{{ profile.permanent_full_address|default:profile.permanent_address }}</td></tr>
+    <tr><td>Permanent District</td><td>{{ profile.permanent_district }}</td></tr>
+    <tr><td>Permanent State</td><td>{{ profile.permanent_state }}</td></tr>
+    <tr><td>Permanent Pincode</td><td>{{ profile.permanent_pincode }}</td></tr>
+  </table>
+
+  <h2>Academic</h2>
+  <table>
+    <tr><td>10th Board</td><td>{{ profile.tenth_board }}</td></tr>
+    <tr><td>10th Roll Number</td><td>{{ profile.tenth_roll_number }}</td></tr>
+    <tr><td>10th Percentage</td><td>{{ profile.tenth_percentage }}</td></tr>
+    <tr><td>12th Board</td><td>{{ profile.twelfth_board }}</td></tr>
+    <tr><td>12th Roll Number</td><td>{{ profile.twelfth_roll_number }}</td></tr>
+    <tr><td>12th Percentage</td><td>{{ profile.twelfth_percentage }}</td></tr>
+    <tr><td>Graduation</td><td>{{ profile.graduation }}</td></tr>
+    <tr><td>College</td><td>{{ profile.college_name }}</td></tr>
+    <tr><td>University</td><td>{{ profile.university_name }}</td></tr>
+    <tr><td>Course</td><td>{{ profile.course }}</td></tr>
+  </table>
+
+  <h2>Bank</h2>
+  <table>
+    <tr><td>Account Holder</td><td>{{ profile.account_holder_name }}</td></tr>
+    <tr><td>Bank Name</td><td>{{ profile.bank_name }}</td></tr>
+    <tr><td>Account Number</td><td>{{ profile.account_number }}</td></tr>
+    <tr><td>IFSC</td><td>{{ profile.ifsc_code }}</td></tr>
+    <tr><td>Branch</td><td>{{ profile.branch_name }}</td></tr>
+    <tr><td>Aadhaar Linked</td><td>{{ profile.aadhaar_linked }}</td></tr>
+  </table>
+
+  <h2>Documents</h2>
+  <table>
+    {% for doc in documents %}
+    <tr class="doc"><td>{{ doc.title }}</td><td><a target="_blank" href="{{ doc.file.url }}">Download</a></td></tr>
+    {% empty %}
+    <tr><td colspan="2">No documents uploaded.</td></tr>
+    {% endfor %}
+  </table>
+</body>
+</html>
