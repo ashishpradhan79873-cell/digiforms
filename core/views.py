@@ -2,13 +2,15 @@ import csv
 import io
 import json
 import zipfile
+from decimal import Decimal, InvalidOperation
+from urllib.parse import quote_plus
 from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -17,6 +19,7 @@ from accounts.models import (
     Application,
     ChatMessage,
     DocumentRule,
+    PaymentSetting,
     PortalNews,
     UserDocument,
     UserProfile,
@@ -184,13 +187,54 @@ def _safe_hex_color(value, fallback):
     return fallback
 
 
+def _active_payment_setting():
+    try:
+        return (
+            PaymentSetting.objects.filter(is_active=True).order_by("-updated_at", "-id").first()
+            or PaymentSetting.objects.order_by("-updated_at", "-id").first()
+        )
+    except (OperationalError, ProgrammingError):
+        # Payment table migrate pending ho to apply page crash na ho.
+        return None
+
+
+def _upi_deep_link(setting):
+    if not setting or not setting.upi_id:
+        return ""
+    params = [f"pa={quote_plus(setting.upi_id.strip())}"]
+    if setting.payee_name:
+        params.append(f"pn={quote_plus(setting.payee_name.strip())}")
+    try:
+        amount = Decimal(setting.amount or 0)
+    except (InvalidOperation, TypeError, ValueError):
+        amount = Decimal("0")
+    if amount > 0:
+        params.append(f"am={quote_plus(str(amount))}")
+    params.append("cu=INR")
+    if setting.note:
+        params.append(f"tn={quote_plus(setting.note.strip())}")
+    return "upi://pay?" + "&".join(params)
+
+
+def _normalize_external_link(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith(("http://", "https://")):
+        return raw
+    return f"https://{raw}"
+
+
 def _news_for_portal(portal_key):
     try:
-        return PortalNews.objects.filter(
+        qs = PortalNews.objects.filter(
             is_active=True,
         ).filter(
             Q(target_portal=PortalNews.TARGET_ALL) | Q(target_portal=portal_key)
         )
+        # DB schema mismatch ho to yahin catch ho jaye, template render me 500 na aaye.
+        qs.exists()
+        return qs
     except (OperationalError, ProgrammingError):
         # Migration pending ho to dashboard crash na ho.
         return PortalNews.objects.none()
@@ -203,6 +247,8 @@ def _portal_news_queryset(portal_key="all"):
             qs = qs.filter(
                 Q(target_portal=PortalNews.TARGET_ALL) | Q(target_portal=portal_key)
             )
+        # Lazy queryset ko force-check karo, taaki missing column par fallback mile.
+        qs.exists()
         return qs
     except (OperationalError, ProgrammingError):
         return PortalNews.objects.none()
@@ -297,6 +343,11 @@ def _attachment_kind(file_name):
     if lower_name.endswith(IMAGE_EXTENSIONS):
         return "image"
     return "file"
+
+
+def _file_download_name(file_field):
+    raw_name = (getattr(file_field, "name", "") or "").strip()
+    return raw_name.rsplit("/", 1)[-1] if raw_name else "attachment"
 
 
 def _decorate_chat_messages(messages_qs):
@@ -730,13 +781,25 @@ def news_hub(request):
     portal = request.GET.get("portal", "all").strip().lower()
     if portal not in {"all", PortalNews.TARGET_GOVERNMENT, PortalNews.TARGET_STUDENT}:
         portal = "all"
+    category = request.GET.get("category", "all").strip().lower()
+    if category not in {"all", "recruitments", "exams"}:
+        category = "all"
+
     headline_items = _portal_news_queryset(portal)
+    if category == "recruitments":
+        headline_items = headline_items.filter(news_type=PortalNews.TYPE_VACANCY)
+    elif category == "exams":
+        headline_items = headline_items.filter(news_type=PortalNews.TYPE_RESULT)
+
+    featured_item = _portal_news_queryset(portal).first()
     return render(
         request,
         "portal_main/news_hub.html",
         {
             "portal": portal,
+            "category": category,
             "headline_items": headline_items,
+            "featured_item": featured_item,
         },
     )
 
@@ -788,11 +851,18 @@ def confirm_send_to_admin(request):
         messages.info(request, "Pehle koi form select karke Apply click karo.")
         return redirect("role_select")
     vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
+    payment_setting = _active_payment_setting()
+    payment_upi_link = _upi_deep_link(payment_setting)
 
     if request.method == "POST":
         selected_steps = request.POST.getlist("steps")
         if not selected_steps:
             messages.error(request, "Kam se kam ek data step select karo.")
+            return redirect("confirm_send_to_admin")
+        consent_1 = request.POST.get("consent_data_usage") == "1"
+        consent_2 = request.POST.get("consent_user_responsibility") == "1"
+        if not (consent_1 and consent_2):
+            messages.error(request, "Form send karne se pehle dono disclaimer tick karna zaroori hai.")
             return redirect("confirm_send_to_admin")
 
         step_data = _profile_step_data(profile)
@@ -849,15 +919,25 @@ def confirm_send_to_admin(request):
         app.remarks = (summary_line + "\n" + payload_line)[:4000]
         app.save()
 
+        submit_mode = request.POST.get("submit_mode", "skip")
         request.session.pop("pending_form_apply", None)
         if pending.get("kind") == "student":
-            messages.success(request, "Student form data admin ko send kar diya gaya.")
+            if submit_mode == "pay":
+                messages.success(request, "Payment attempt ke saath student form data admin ko send kar diya gaya.")
+            else:
+                messages.success(request, "Student form data admin ko send kar diya gaya.")
             return redirect("student_services_dashboard")
 
         if created:
-            messages.success(request, "Government form data admin ko send kar diya gaya.")
+            if submit_mode == "pay":
+                messages.success(request, "Payment attempt ke saath government form data admin ko send kar diya gaya.")
+            else:
+                messages.success(request, "Government form data admin ko send kar diya gaya.")
         else:
-            messages.success(request, "Government form request update karke admin ko resend kar diya gaya.")
+            if submit_mode == "pay":
+                messages.success(request, "Payment attempt ke saath government form request update karke resend kar diya gaya.")
+            else:
+                messages.success(request, "Government form request update karke admin ko resend kar diya gaya.")
         return redirect("dashboard")
 
     step_data = _profile_step_data(profile)
@@ -904,6 +984,56 @@ def confirm_send_to_admin(request):
             "step_cards": step_cards,
             "selected_default": selected_default,
             "required_doc_rows": required_doc_rows,
+            "payment_setting": payment_setting,
+            "payment_upi_link": payment_upi_link,
+        },
+    )
+
+
+@login_required
+def admin_payment(request):
+    if not _can_access_admin(request):
+        messages.error(request, "Admin panel access allowed nahi hai.")
+        return redirect("dashboard")
+
+    setting = _active_payment_setting()
+    if request.method == "POST":
+        upi_id = request.POST.get("upi_id", "").strip()
+        payee_name = request.POST.get("payee_name", "").strip()
+        note = request.POST.get("note", "").strip()
+        amount_raw = request.POST.get("amount", "0").strip()
+        is_active = request.POST.get("is_active") == "on"
+        try:
+            amount = Decimal(amount_raw or "0")
+            if amount < 0:
+                amount = Decimal("0")
+        except (InvalidOperation, ValueError):
+            amount = Decimal("0")
+
+        try:
+            if not setting:
+                setting = PaymentSetting()
+            setting.upi_id = upi_id
+            setting.payee_name = payee_name
+            setting.note = note
+            setting.amount = amount
+            setting.is_active = is_active
+            if request.FILES.get("qr_image"):
+                setting.qr_image = request.FILES["qr_image"]
+            if request.POST.get("clear_qr") == "on":
+                setting.qr_image = None
+            setting.save()
+            messages.success(request, "Payment settings update ho gayi.")
+        except (OperationalError, ProgrammingError):
+            messages.error(request, "Payment table ready nahi hai. `manage.py migrate` run karo.")
+        return redirect("admin_payment")
+
+    return render(
+        request,
+        "portal_main/admin_payment.html",
+        {
+            "setting": setting,
+            "upi_link": _upi_deep_link(setting),
         },
     )
 
@@ -1069,7 +1199,9 @@ def admin_news(request):
                 is_active = request.POST.get("is_active") == "on"
                 title_color = _safe_hex_color(request.POST.get("title_color", "#0f172a"), "#0f172a")
                 details_color = _safe_hex_color(request.POST.get("details_color", "#334155"), "#334155")
+                external_link = _normalize_external_link(request.POST.get("external_link", ""))
                 details_pdf = request.FILES.get("details_pdf")
+                image = request.FILES.get("image")
 
                 if not title:
                     messages.error(request, "News title required hai.")
@@ -1105,16 +1237,23 @@ def admin_news(request):
                     obj.is_active = is_active
                     obj.title_color = title_color
                     obj.details_color = details_color
+                    obj.external_link = external_link
                     if details_pdf:
                         obj.details_pdf = details_pdf
+                    if image:
+                        obj.image = image
                     if request.POST.get("clear_pdf") == "on":
                         obj.details_pdf = None
+                    if request.POST.get("clear_image") == "on":
+                        obj.image = None
                     obj.save()
                     messages.success(request, "News update ho gayi.")
                 else:
                     PortalNews.objects.create(
                         title=title,
                         details=details,
+                        image=image,
+                        external_link=external_link,
                         news_type=news_type,
                         target_portal=target_portal,
                         event_date=event_date,
@@ -1140,7 +1279,8 @@ def admin_news(request):
             return redirect("admin_news")
 
     try:
-        news_rows = PortalNews.objects.all()
+        # Template loop me late-failure avoid karne ke liye yahin evaluate karo.
+        news_rows = list(PortalNews.objects.all())
     except (OperationalError, ProgrammingError):
         news_rows = PortalNews.objects.none()
         messages.error(request, "News table ready nahi hai. `manage.py migrate` run karo.")
@@ -1251,11 +1391,15 @@ def admin_chat_send(request):
     if request.method != "POST" or not _can_access_admin(request):
         return redirect("admin_chat")
     profile = get_object_or_404(UserProfile, id=request.POST.get("profile_id"))
+    search = request.POST.get("q", "").strip()
     message_text = request.POST.get("message", "").strip()
     attachment = request.FILES.get("attachment")
     if not message_text and not attachment:
         messages.error(request, "Message ya attachment bhejo.")
-        return redirect(f"{reverse('admin_chat')}?profile_id={profile.id}")
+        redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+        if search:
+            redirect_url += f"&q={search}"
+        return redirect(redirect_url)
     ChatMessage.objects.create(
         profile=profile,
         from_admin=True,
@@ -1263,7 +1407,10 @@ def admin_chat_send(request):
         attachment=attachment,
     )
     messages.success(request, "Reply send ho gayi.")
-    return redirect(f"{reverse('admin_chat')}?profile_id={profile.id}")
+    redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+    if search:
+        redirect_url += f"&q={search}"
+    return redirect(redirect_url)
 
 
 @login_required
@@ -1284,9 +1431,37 @@ def admin_chat_delete_message(request, message_id):
         return redirect("admin_chat")
     msg = get_object_or_404(ChatMessage, id=message_id)
     profile_id = msg.profile_id
+    search = request.POST.get("q", "").strip()
     msg.delete()
     messages.success(request, "Chat message remove ho gaya.")
-    return redirect(f"{reverse('admin_chat')}?profile_id={profile_id}")
+    redirect_url = f"{reverse('admin_chat')}?profile_id={profile_id}"
+    if search:
+        redirect_url += f"&q={search}"
+    return redirect(redirect_url)
+
+
+@login_required
+def user_chat_delete_message(request, message_id):
+    if request.method != "POST":
+        return redirect("user_chat")
+    profile = get_object_or_404(UserProfile, user=request.user)
+    msg = get_object_or_404(ChatMessage, id=message_id, profile=profile)
+    msg.delete()
+    messages.success(request, "Chat message delete ho gaya.")
+    return redirect("user_chat")
+
+
+@login_required
+def chat_attachment_download(request, message_id):
+    msg = get_object_or_404(ChatMessage, id=message_id)
+    if not msg.attachment:
+        return redirect("user_chat")
+    is_owner = msg.profile.user_id == request.user.id
+    is_admin = _can_access_admin(request)
+    if not (is_owner or is_admin):
+        return redirect("dashboard")
+    download_name = _file_download_name(msg.attachment)
+    return FileResponse(msg.attachment.open("rb"), as_attachment=True, filename=download_name)
 
 
 @login_required

@@ -7,7 +7,7 @@
 
 {% block content %}
 <style>
-  .nav-top { background:#0a3b78; color:#fff; }
+  .nav-top { background:#0b63ce; color:#fff; }
   .page-wrap { padding: 18px 20px 26px; }
   .profile-card, .service-card { background:#fff; border:1px solid #d7dde7; border-radius:16px; }
   .service-card { overflow:hidden; position:relative; }
@@ -65,24 +65,9 @@
     {% endfor %}
   {% endif %}
 
-  <section class="profile-card p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-    <div>
-      <h1 class="text-2xl md:text-3xl font-black leading-tight">{{ profile.full_name|default:request.user.username }}</h1>
-      <p class="text-sm md:text-base text-slate-600">Applicant ID: #{{ profile.id }}</p>
-    </div>
-    <span class="rounded-full border border-emerald-300 bg-emerald-100 px-4 py-2 text-xs md:text-base font-black text-emerald-700">
-      Master Profile: {{ profile.completion_percent }}% Complete
-    </span>
-  </section>
-
-  <section class="mt-8">
-    <article class="news-card p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-      <div>
-        <h2 class="text-2xl md:text-3xl font-black">News Desk</h2>
-        <p class="text-sm text-slate-600 mt-1">Open button par click karke professional headlines page kholo.</p>
-      </div>
-      <a href="{% url 'news_hub' %}?portal=student" class="inline-flex rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800">Open News</a>
-    </article>
+  <section class="profile-card p-6">
+    <h1 class="text-2xl md:text-3xl font-black leading-tight">Student Forms</h1>
+    <p class="text-sm md:text-base text-slate-600 mt-1">Student category services me form select karke apply karo.</p>
   </section>
 
   <section class="mt-8">

@@ -216,6 +216,8 @@ class PortalNews(models.Model):
 
     title = models.CharField(max_length=220)
     details = models.TextField(blank=True)
+    image = models.ImageField(upload_to="news_images/", null=True, blank=True)
+    external_link = models.URLField(max_length=500, blank=True)
     details_pdf = models.FileField(upload_to="news_pdfs/", null=True, blank=True)
     title_color = models.CharField(max_length=7, default="#0f172a")
     details_color = models.CharField(max_length=7, default="#334155")
@@ -264,3 +266,20 @@ class WalletTransaction(models.Model):
         add_total = agg.get("add_total") or 0
         spend_total = agg.get("spend_total") or 0
         return add_total - spend_total
+
+
+class PaymentSetting(models.Model):
+    upi_id = models.CharField(max_length=120, blank=True)
+    payee_name = models.CharField(max_length=120, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    qr_image = models.ImageField(upload_to="payment_qr/", null=True, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Payment Setting"
+        verbose_name_plural = "Payment Setting"
+
+    def __str__(self):
+        return self.upi_id or "Payment Setting"

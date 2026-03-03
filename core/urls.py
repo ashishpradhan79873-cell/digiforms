@@ -8,6 +8,8 @@ urlpatterns = [
     path("news/<int:news_id>/", views.news_detail, name="news_detail"),
     path("send-to-admin/", views.confirm_send_to_admin, name="confirm_send_to_admin"),
     path("chat/", views.user_chat, name="user_chat"),
+    path("chat/message/<int:message_id>/delete/", views.user_chat_delete_message, name="user_chat_delete_message"),
+    path("chat/message/<int:message_id>/attachment/download/", views.chat_attachment_download, name="chat_attachment_download"),
     path("student-services/", views.student_services_dashboard, name="student_services_dashboard"),
     path(
         "student-services/apply/<int:vacancy_id>/",
@@ -63,6 +65,7 @@ urlpatterns = [
     path("admin-panel/documents/", views.admin_documents, name="admin_documents"),
     path("admin-panel/chat/", views.admin_chat, name="admin_chat"),
     path("admin-panel/news/", views.admin_news, name="admin_news"),
+    path("admin-panel/payment/", views.admin_payment, name="admin_payment"),
     path("admin-panel/chat/send/", views.admin_chat_send, name="admin_chat_send"),
     path(
         "admin-panel/chat/<int:profile_id>/toggle/",

@@ -43,6 +43,7 @@
       <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
       <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
       <a class="menu-link active" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
+      <a class="menu-link" href="{% url 'admin_payment' %}"><span class="material-symbols-outlined">payments</span><span class="menu-label">Payment</span></a>
       <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
     </nav>
   </aside>
@@ -56,7 +57,7 @@
 
     <section class="block p-4">
       <h2 class="text-xl font-black">Add News Update</h2>
-      <form method="post" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+      <form method="post" enctype="multipart/form-data" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         {% csrf_token %}
         <input type="hidden" name="action" value="save_news">
         <div class="md:col-span-2">
@@ -96,8 +97,16 @@
           <input type="color" name="details_color" class="mini-input h-10 p-1" value="#334155">
         </div>
         <div class="md:col-span-2">
-          <label class="text-xs font-bold text-slate-600">Details Text (bada editor)</label>
-          <textarea name="details" rows="6" class="mini-input big-text" placeholder="Full news text yahan likho..."></textarea>
+          <label class="text-xs font-bold text-slate-600">External Link (optional)</label>
+          <input type="text" name="external_link" class="mini-input" placeholder="https://example.com/notice">
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-xs font-bold text-slate-600">PDF (optional)</label>
+          <input type="file" name="details_pdf" accept=".pdf,application/pdf" class="mini-input">
+        </div>
+        <div class="md:col-span-4">
+          <label class="text-xs font-bold text-slate-600">Details Text</label>
+          <textarea name="details" rows="6" class="mini-input big-text" placeholder="Simple news text..."></textarea>
         </div>
         <div class="flex items-center gap-3">
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
@@ -111,7 +120,7 @@
       <div class="mt-3 space-y-3">
         {% for item in news_rows %}
         <div class="edit-card">
-          <form method="post" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_news">
             <input type="hidden" name="news_id" value="{{ item.id }}">
@@ -152,16 +161,34 @@
               <input type="color" name="details_color" class="mini-input h-10 p-1" value="{{ item.details_color|default:'#334155' }}">
             </div>
             <div class="md:col-span-2">
-              <label class="text-xs font-bold text-slate-600">Details Text (edit/remove)</label>
-              <textarea name="details" rows="6" class="mini-input big-text news-details-editor">{{ item.details }}</textarea>
+              <label class="text-xs font-bold text-slate-600">External Link</label>
+              <input type="text" name="external_link" class="mini-input" value="{{ item.external_link }}" placeholder="https://example.com">
             </div>
             <div>
-              <button type="button" class="btn btn-gray clear-details-btn">Remove Text</button>
+              <label class="text-xs font-bold text-slate-600">PDF</label>
+              <input type="file" name="details_pdf" accept=".pdf,application/pdf" class="mini-input">
+            </div>
+            <div class="md:col-span-3">
+              <label class="text-xs font-bold text-slate-600">Details Text</label>
+              <textarea name="details" rows="6" class="mini-input big-text">{{ item.details }}</textarea>
+            </div>
+            <div>
+              <label class="text-xs text-slate-700"><input type="checkbox" name="clear_pdf"> Remove PDF</label>
             </div>
             <div class="flex items-center gap-3">
               <label class="text-xs font-semibold text-slate-700"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}> Active</label>
               <button type="submit" class="btn btn-green">Update</button>
             </div>
+            {% if item.external_link %}
+            <div class="md:col-span-5 text-xs">
+              <a href="{{ item.external_link }}" target="_blank" rel="noopener" class="font-bold text-blue-700 underline break-all">{{ item.external_link }}</a>
+            </div>
+            {% endif %}
+            {% if item.details_pdf %}
+            <div class="md:col-span-5">
+              <a href="{{ item.details_pdf.url }}" target="_blank" rel="noopener" class="btn btn-gray">Open PDF</a>
+            </div>
+            {% endif %}
           </form>
           <form method="post" class="mt-2">
             {% csrf_token %}
@@ -190,14 +217,6 @@
         localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
       });
     }
-    document.querySelectorAll(".clear-details-btn").forEach((btnItem) => {
-      btnItem.addEventListener("click", () => {
-        const form = btnItem.closest("form");
-        if (!form) return;
-        const ta = form.querySelector(".news-details-editor");
-        if (ta) ta.value = "";
-      });
-    });
   })();
 </script>
 {% endblock %}

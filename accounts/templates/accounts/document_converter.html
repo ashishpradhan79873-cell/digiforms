@@ -1,56 +1,95 @@
 {% extends 'base.html' %}
 
-{% block title %}Photo Converter{% endblock %}
+{% block title %}Document Converter{% endblock %}
 {% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
-{% block page_container_class %}max-w-3xl mx-auto p-3 md:p-5{% endblock %}
+{% block page_container_class %}max-w-5xl mx-auto p-3 md:p-5{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
 <style>
-  .card { background:#fff; border:1px solid #d7dde7; border-radius:12px; }
+  .card { background:#fff; border:1px solid #d7dde7; border-radius:14px; }
   .label { display:block; font-size:12px; font-weight:800; color:#334155; margin-bottom:6px; }
-  .input { width:100%; border:1px solid #cbd5e1; border-radius:9px; padding:8px 9px; font-size:13px; }
-  .btn { border-radius:9px; padding:8px 12px; font-weight:800; font-size:12px; }
+  .input { width:100%; border:1px solid #cbd5e1; border-radius:9px; padding:8px 9px; font-size:13px; background:#fff; }
+  .btn { border-radius:10px; padding:9px 12px; font-weight:800; font-size:12px; }
   .btn-primary { background:#2563eb; color:#fff; }
   .btn-soft { background:#eef2ff; color:#1e3a8a; border:1px solid #c7d2fe; }
+  .btn-danger { background:#fff1f2; color:#be123c; border:1px solid #fecdd3; }
+  .tab-btn { border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:10px; padding:8px 12px; font-size:12px; font-weight:900; }
+  .tab-btn.active { background:#dbeafe; border-color:#93c5fd; color:#1d4ed8; }
+  .tool-pane { display:none; }
+  .tool-pane.active { display:block; }
+  .result { border:1px solid #dbe3ef; border-radius:12px; background:#f8fafc; padding:10px; font-size:12px; color:#334155; }
   .crop-wrap { display:flex; justify-content:center; }
-  .crop-stage { width:100%; max-width:360px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; display:block; touch-action:none; }
-  .result-item { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#f8fafc; }
-  .preview { width:100%; max-height:180px; object-fit:contain; border:1px solid #dbe3ef; border-radius:8px; background:#fff; }
+  .crop-stage { width:100%; max-width:430px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; display:block; touch-action:none; }
+  .preview { width:100%; max-height:220px; object-fit:contain; border:1px solid #dbe3ef; border-radius:8px; background:#fff; }
+  @media (max-width: 640px) {
+    .btn, .tab-btn { width:100%; text-align:center; }
+  }
 </style>
 
 <header class="card p-4 flex flex-wrap items-center justify-between gap-3">
   <div>
-    <h1 class="text-xl md:text-2xl font-black">Simple Touch Crop + KB</h1>
-    <p class="text-xs text-slate-600 mt-1">Crop box ko touch/drag karo. 4-side remove value live milega.</p>
+    <h1 class="text-xl md:text-2xl font-black">Document Converter</h1>
+    <p class="text-xs text-slate-600 mt-1">Image to PDF, Photo/Signature Resizer, PDF to Image, 2-Photo Merge</p>
   </div>
   <a href="{% url 'master_data_option' %}" class="btn btn-soft">Back</a>
 </header>
 
 <section class="card mt-4 p-4">
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+  <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+    <button type="button" class="tab-btn active" data-tab="imgpdf">1) Image to PDF</button>
+    <button type="button" class="tab-btn" data-tab="resize">2) Photo & Signature Resizer</button>
+    <button type="button" class="tab-btn" data-tab="pdfimg">3) PDF to Image</button>
+    <button type="button" class="tab-btn" data-tab="merge">4) Merge 2 Photos</button>
+  </div>
+</section>
+
+<section id="pane-imgpdf" class="tool-pane active card mt-4 p-4">
+  <h2 class="text-lg font-black">Image to PDF Converter</h2>
+  <p class="text-xs text-slate-600 mt-1">2-3 photos select karo, single PDF ban jayegi.</p>
+  <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div>
+      <label class="label">Select Photos</label>
+      <input id="imgPdfFiles" class="input" type="file" accept="image/*" multiple>
+    </div>
+    <div class="flex items-end gap-2">
+      <button id="imgPdfConvertBtn" type="button" class="btn btn-primary">Create Single PDF</button>
+      <a id="imgPdfDownloadBtn" class="btn btn-soft" href="#" style="display:none;">Download PDF</a>
+    </div>
+  </div>
+  <div id="imgPdfResult" class="result mt-3">No file processed yet.</div>
+  <div id="imgPdfPreview" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2"></div>
+  <iframe id="imgPdfFramePreview" class="mt-3 w-full h-64 border border-slate-200 rounded-lg" style="display:none;"></iframe>
+
+</section>
+
+<section id="pane-resize" class="tool-pane card mt-4 p-4">
+  <h2 class="text-lg font-black">Photo & Signature Resizer</h2>
+  <p class="text-xs text-slate-600 mt-1">KB, width, height set karo. Touch crop supported.</p>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
     <div>
       <label class="label">Photo</label>
       <input id="fileInput" class="input" type="file" accept="image/*">
     </div>
     <div>
       <label class="label">Target Size (KB)</label>
-      <input id="targetKbInput" class="input" type="number" min="10" value="80">
+      <input id="targetKbInput" class="input" type="number" min="5" value="20">
     </div>
     <div>
       <label class="label">Width (px)</label>
-      <input id="widthInput" class="input" type="number" min="50" value="413">
+      <input id="widthInput" class="input" type="number" min="10" value="413">
     </div>
     <div>
       <label class="label">Height (px)</label>
-      <input id="heightInput" class="input" type="number" min="50" value="531">
+      <input id="heightInput" class="input" type="number" min="10" value="531">
     </div>
   </div>
 
   <div class="mt-3 crop-wrap">
-    <canvas id="cropCanvas" class="crop-stage" width="360" height="220"></canvas>
+    <canvas id="cropCanvas" class="crop-stage" width="430" height="260"></canvas>
   </div>
-  <p id="infoText" class="mt-2 text-xs text-slate-600 text-center">Photo beech me hai. Touch se crop karo.</p>
+  <p id="infoText" class="mt-2 text-xs text-slate-600 text-center">Photo select karo, crop box drag karo.</p>
 
   <div class="mt-3 flex flex-wrap gap-2 justify-center">
     <button id="autoWhiteCutBtn" class="btn btn-soft" type="button">Auto Cut White Bg</button>
@@ -60,326 +99,508 @@
   <div id="resultWrap" class="mt-3"></div>
 </section>
 
+<section id="pane-pdfimg" class="tool-pane card mt-4 p-4">
+  <h2 class="text-lg font-black">PDF to Image</h2>
+  <p class="text-xs text-slate-600 mt-1">PDF ko image ZIP me convert karo.</p>
+  <div class="card p-3 mt-3">
+    <h3 class="font-black">PDF to Images (ZIP)</h3>
+    <div class="mt-2">
+      <label class="label">Select PDF</label>
+      <input id="pdfToImageFile" class="input" type="file" accept="application/pdf">
+    </div>
+    <div class="mt-2">
+      <label class="label">Image Format</label>
+      <select id="pdfImageFormat" class="input">
+        <option value="jpg">JPG</option>
+        <option value="png">PNG</option>
+      </select>
+    </div>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <button id="pdfToImageBtn" type="button" class="btn btn-primary">Convert PDF to Images</button>
+      <a id="pdfToImageDownloadBtn" class="btn btn-soft" href="#" style="display:none;">Download ZIP</a>
+    </div>
+    <div id="pdfToImageResult" class="result mt-2">No file processed yet.</div>
+    <div id="pdfToImagePreview" class="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+  </div>
+</section>
+
+<section id="pane-merge" class="tool-pane card mt-4 p-4">
+  <h2 class="text-lg font-black">Merge 2 Photos into One (Front/Back)</h2>
+  <p class="text-xs text-slate-600 mt-1">Aadhaar front + back ko single image me combine karo.</p>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+    <div>
+      <label class="label">Front Photo</label>
+      <input id="mergeFrontFile" class="input" type="file" accept="image/*">
+    </div>
+    <div>
+      <label class="label">Back Photo</label>
+      <input id="mergeBackFile" class="input" type="file" accept="image/*">
+    </div>
+    <div>
+      <label class="label">Layout</label>
+      <select id="mergeLayout" class="input">
+        <option value="horizontal">Left + Right</option>
+        <option value="vertical">Top + Bottom</option>
+      </select>
+    </div>
+  </div>
+  <div class="mt-3 flex flex-wrap gap-2">
+    <button id="mergeCreateBtn" type="button" class="btn btn-primary">Create Merged Image</button>
+    <a id="mergeDownloadBtn" class="btn btn-soft" href="#" style="display:none;">Download Image</a>
+  </div>
+  <div id="mergeResult" class="result mt-2">No merged image yet.</div>
+  <img id="mergePreview" class="preview mt-3" alt="Merged preview" style="display:none;">
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-  const fileInput = document.getElementById("fileInput");
-  const targetKbInput = document.getElementById("targetKbInput");
-  const widthInput = document.getElementById("widthInput");
-  const heightInput = document.getElementById("heightInput");
-  const autoWhiteCutBtn = document.getElementById("autoWhiteCutBtn");
-  const convertBtn = document.getElementById("convertBtn");
-  const downloadBtn = document.getElementById("downloadBtn");
-  const resultWrap = document.getElementById("resultWrap");
-  const infoText = document.getElementById("infoText");
-  const cropCanvas = document.getElementById("cropCanvas");
-  const ctx = cropCanvas.getContext("2d");
+  const csrfToken = "{{ csrf_token }}";
 
-  let selectedFile = null;
-  let img = null;
-  let objectUrl = "";
-  let downloadUrl = "";
-  let naturalW = 0;
-  let naturalH = 0;
-  let displayRect = { x: 0, y: 0, w: 360, h: 220 };
-  let cropRect = { x: 30, y: 15, w: 300, h: 190 };
-  let dragMode = "";
-  let dragStart = { x: 0, y: 0, rect: null };
-  const minCrop = 20;
-
-  function clamp(v, min, max) {
-    return Math.max(min, Math.min(v, max));
+  function bytesToKb(bytes) {
+    return (bytes / 1024).toFixed(2);
+  }
+  function setResult(id, text, isError) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isError ? "#b91c1c" : "#334155";
   }
 
-  function resetCropRect() {
-    const b = imageBounds();
-    cropRect = {
-      x: Math.round(b.x + b.w * 0.04),
-      y: Math.round(b.y + b.h * 0.04),
-      w: Math.round(b.w * 0.92),
-      h: Math.round(b.h * 0.92),
-    };
-  }
-
-  function imageBounds() {
-    const x1 = Math.max(displayRect.x, 0);
-    const y1 = Math.max(displayRect.y, 0);
-    const x2 = Math.min(displayRect.x + displayRect.w, cropCanvas.width);
-    const y2 = Math.min(displayRect.y + displayRect.h, cropCanvas.height);
-    return { x: x1, y: y1, w: Math.max(x2 - x1, 1), h: Math.max(y2 - y1, 1) };
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-    ctx.fillStyle = "#eef2ff";
-    ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-    if (!img) {
-      ctx.fillStyle = "#334155";
-      ctx.font = "14px Arial";
-      ctx.fillText("Photo select karo", 16, 26);
-      return;
-    }
-
-    const canvasRatio = cropCanvas.width / cropCanvas.height;
-    const imgRatio = naturalW / naturalH;
-    if (imgRatio > canvasRatio) {
-      displayRect.w = cropCanvas.width;
-      displayRect.h = Math.round(displayRect.w / imgRatio);
-      displayRect.x = 0;
-      displayRect.y = Math.round((cropCanvas.height - displayRect.h) / 2);
-    } else {
-      displayRect.h = cropCanvas.height;
-      displayRect.w = Math.round(displayRect.h * imgRatio);
-      displayRect.y = 0;
-      displayRect.x = Math.round((cropCanvas.width - displayRect.w) / 2);
-    }
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-    ctx.drawImage(img, displayRect.x, displayRect.y, displayRect.w, displayRect.h);
-    ctx.strokeStyle = "#16a34a";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
-
-    const handle = 8;
-    const points = [
-      [cropRect.x, cropRect.y],
-      [cropRect.x + cropRect.w, cropRect.y],
-      [cropRect.x, cropRect.y + cropRect.h],
-      [cropRect.x + cropRect.w, cropRect.y + cropRect.h],
-      [cropRect.x + cropRect.w / 2, cropRect.y],
-      [cropRect.x + cropRect.w / 2, cropRect.y + cropRect.h],
-      [cropRect.x, cropRect.y + cropRect.h / 2],
-      [cropRect.x + cropRect.w, cropRect.y + cropRect.h / 2],
-    ];
-    ctx.fillStyle = "#16a34a";
-    points.forEach(([px, py]) => ctx.fillRect(px - handle / 2, py - handle / 2, handle, handle));
-
-    const s = cropStats();
-    infoText.textContent = `Hatana: Top ${s.top}px, Bottom ${s.bottom}px, Left ${s.left}px, Right ${s.right}px | Crop ${s.w}x${s.h}`;
-  }
-
-  function cropStats() {
-    const scaleX = naturalW / Math.max(displayRect.w, 1);
-    const scaleY = naturalH / Math.max(displayRect.h, 1);
-    const left = Math.max(Math.round((cropRect.x - displayRect.x) * scaleX), 0);
-    const top = Math.max(Math.round((cropRect.y - displayRect.y) * scaleY), 0);
-    const right = Math.max(Math.round((displayRect.x + displayRect.w - (cropRect.x + cropRect.w)) * scaleX), 0);
-    const bottom = Math.max(Math.round((displayRect.y + displayRect.h - (cropRect.y + cropRect.h)) * scaleY), 0);
-    const w = Math.max(Math.round(cropRect.w * scaleX), 1);
-    const h = Math.max(Math.round(cropRect.h * scaleY), 1);
-    return { left, top, right, bottom, w, h };
-  }
-
-  function pointerPos(evt) {
-    const rect = cropCanvas.getBoundingClientRect();
-    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  }
-
-  function inHandle(p, x, y, r) {
-    return Math.abs(p.x - x) <= r && Math.abs(p.y - y) <= r;
-  }
-
-  function pickMode(p) {
-    const r = 12;
-    const mx = cropRect.x + cropRect.w / 2;
-    const my = cropRect.y + cropRect.h / 2;
-    if (inHandle(p, cropRect.x, cropRect.y, r)) return "nw";
-    if (inHandle(p, cropRect.x + cropRect.w, cropRect.y, r)) return "ne";
-    if (inHandle(p, cropRect.x, cropRect.y + cropRect.h, r)) return "sw";
-    if (inHandle(p, cropRect.x + cropRect.w, cropRect.y + cropRect.h, r)) return "se";
-    if (inHandle(p, mx, cropRect.y, r)) return "n";
-    if (inHandle(p, mx, cropRect.y + cropRect.h, r)) return "s";
-    if (inHandle(p, cropRect.x, my, r)) return "w";
-    if (inHandle(p, cropRect.x + cropRect.w, my, r)) return "e";
-    if (p.x >= cropRect.x && p.x <= cropRect.x + cropRect.w && p.y >= cropRect.y && p.y <= cropRect.y + cropRect.h) return "move";
-    return "";
-  }
-
-  function onPointerDown(evt) {
-    if (!img) return;
-    const p = pointerPos(evt);
-    const mode = pickMode(p);
-    if (!mode) return;
-    dragMode = mode;
-    dragStart = { x: p.x, y: p.y, rect: { ...cropRect } };
-    evt.preventDefault();
-  }
-
-  function onPointerMove(evt) {
-    if (!dragMode) return;
-    const p = pointerPos(evt);
-    const dx = p.x - dragStart.x;
-    const dy = p.y - dragStart.y;
-    const r = dragStart.rect;
-
-    if (dragMode === "move") {
-      const b = imageBounds();
-      cropRect.x = clamp(r.x + dx, b.x, b.x + b.w - r.w);
-      cropRect.y = clamp(r.y + dy, b.y, b.y + b.h - r.h);
-    } else {
-      const b = imageBounds();
-      let x1 = r.x;
-      let y1 = r.y;
-      let x2 = r.x + r.w;
-      let y2 = r.y + r.h;
-      if (dragMode.includes("n")) y1 = clamp(r.y + dy, b.y, y2 - minCrop);
-      if (dragMode.includes("s")) y2 = clamp(r.y + r.h + dy, y1 + minCrop, b.y + b.h);
-      if (dragMode.includes("w")) x1 = clamp(r.x + dx, b.x, x2 - minCrop);
-      if (dragMode.includes("e")) x2 = clamp(r.x + r.w + dx, x1 + minCrop, b.x + b.w);
-      cropRect.x = x1;
-      cropRect.y = y1;
-      cropRect.w = x2 - x1;
-      cropRect.h = y2 - y1;
-    }
-    draw();
-    evt.preventDefault();
-  }
-
-  function onPointerUp() {
-    dragMode = "";
-  }
-
-  function previewResult(item) {
-    resultWrap.innerHTML = `
-      <div class="result-item">
-        <img src="${item.url}" class="preview" alt="result">
-        <div class="mt-2 text-sm font-bold">${item.name}</div>
-        <div class="text-xs text-slate-600">Original: ${(item.originalSize / 1024).toFixed(2)} KB</div>
-        <div class="text-xs text-slate-600">Converted: ${(item.newSize / 1024).toFixed(2)} KB</div>
-        <div class="text-xs text-slate-600">Output: ${item.width} x ${item.height}</div>
-      </div>
-    `;
-  }
-
-  fileInput.addEventListener("change", () => {
-    const file = (fileInput.files || [])[0];
-    selectedFile = file || null;
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    if (!selectedFile) {
-      img = null;
-      draw();
-      return;
-    }
-    objectUrl = URL.createObjectURL(selectedFile);
-    const image = new Image();
-    image.onload = () => {
-      img = image;
-      naturalW = image.width;
-      naturalH = image.height;
-      draw();
-      resetCropRect();
-      draw();
-    };
-    image.src = objectUrl;
-    const autoKb = Math.max(Math.floor(selectedFile.size / 1024) - 1, 10);
-    targetKbInput.value = String(autoKb);
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((x) => x.classList.remove("active"));
+      btn.classList.add("active");
+      const key = btn.dataset.tab;
+      document.querySelectorAll(".tool-pane").forEach((pane) => pane.classList.remove("active"));
+      document.getElementById("pane-" + key).classList.add("active");
+    });
   });
 
-  autoWhiteCutBtn.addEventListener("click", () => {
-    if (!img) {
-      infoText.textContent = "Pehle photo select karo.";
-      return;
+  // Tool 1: Images -> PDF
+  (function () {
+    const input = document.getElementById("imgPdfFiles");
+    const btn = document.getElementById("imgPdfConvertBtn");
+    const downloadBtn = document.getElementById("imgPdfDownloadBtn");
+    const imgPdfPreview = document.getElementById("imgPdfPreview");
+    const imgPdfFramePreview = document.getElementById("imgPdfFramePreview");
+    const mergeFrontFile = document.getElementById("mergeFrontFile");
+    const mergeBackFile = document.getElementById("mergeBackFile");
+    const mergeLayout = document.getElementById("mergeLayout");
+    const mergeCreateBtn = document.getElementById("mergeCreateBtn");
+    const mergeDownloadBtn = document.getElementById("mergeDownloadBtn");
+    const mergePreview = document.getElementById("mergePreview");
+    let downloadUrl = "";
+    let mergeDownloadUrl = "";
+
+    function fileToImage(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = reject;
+          im.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
-    const off = document.createElement("canvas");
-    off.width = naturalW;
-    off.height = naturalH;
-    const ox = off.getContext("2d");
-    ox.drawImage(img, 0, 0, naturalW, naturalH);
-    const px = ox.getImageData(0, 0, naturalW, naturalH).data;
-    let minX = naturalW, minY = naturalH, maxX = -1, maxY = -1;
-    const white = 245;
-    for (let y = 0; y < naturalH; y++) {
-      for (let x = 0; x < naturalW; x++) {
-        const i = (y * naturalW + x) * 4;
-        const r = px[i], g = px[i + 1], b = px[i + 2], a = px[i + 3];
-        const isWhite = a > 0 && r >= white && g >= white && b >= white;
-        if (!isWhite) {
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-        }
+
+    btn.addEventListener("click", async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) {
+        setResult("imgPdfResult", "Photos select karo.", true);
+        return;
       }
+      const fd = new FormData();
+      files.forEach((f) => fd.append("images", f));
+      setResult("imgPdfResult", "Processing...", false);
+      const resp = await fetch("{% url 'document_converter_images_to_pdf' %}", {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": csrfToken }
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        setResult("imgPdfResult", data.error || "PDF creation failed.", true);
+        return;
+      }
+      const blob = await resp.blob();
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+      downloadUrl = URL.createObjectURL(blob);
+      const outName = resp.headers.get("X-Output-Name") || "merged_documents.pdf";
+      downloadBtn.href = downloadUrl;
+      downloadBtn.download = outName;
+      downloadBtn.style.display = "inline-flex";
+      imgPdfFramePreview.src = downloadUrl;
+      imgPdfFramePreview.style.display = "block";
+      setResult("imgPdfResult", "Done. Output: " + outName + " | Size: " + bytesToKb(blob.size) + " KB", false);
+    });
+
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files || []);
+      imgPdfPreview.innerHTML = "";
+      imgPdfFramePreview.style.display = "none";
+      files.slice(0, 8).forEach((file) => {
+        if (!(file.type || "").startsWith("image/")) return;
+        const url = URL.createObjectURL(file);
+        const card = document.createElement("div");
+        card.className = "result";
+        card.innerHTML = '<img src="' + url + '" class="preview" alt="Selected"><div class="mt-1 text-[11px] font-semibold">' + file.name + "</div>";
+        imgPdfPreview.appendChild(card);
+      });
+    });
+
+    mergeCreateBtn.addEventListener("click", async () => {
+      const f1 = (mergeFrontFile.files || [])[0];
+      const f2 = (mergeBackFile.files || [])[0];
+      if (!f1 || !f2) {
+        setResult("mergeResult", "Front aur Back dono photo select karo.", true);
+        return;
+      }
+      try {
+        const [img1, img2] = await Promise.all([fileToImage(f1), fileToImage(f2)]);
+        const gap = 20;
+        const canvas = document.createElement("canvas");
+        const c = canvas.getContext("2d");
+        const mode = mergeLayout.value || "horizontal";
+        if (mode === "vertical") {
+          const w = Math.max(img1.width, img2.width);
+          const h = img1.height + img2.height + gap;
+          canvas.width = w;
+          canvas.height = h;
+          c.fillStyle = "#ffffff";
+          c.fillRect(0, 0, w, h);
+          c.drawImage(img1, Math.round((w - img1.width) / 2), 0);
+          c.drawImage(img2, Math.round((w - img2.width) / 2), img1.height + gap);
+        } else {
+          const w = img1.width + img2.width + gap;
+          const h = Math.max(img1.height, img2.height);
+          canvas.width = w;
+          canvas.height = h;
+          c.fillStyle = "#ffffff";
+          c.fillRect(0, 0, w, h);
+          c.drawImage(img1, 0, Math.round((h - img1.height) / 2));
+          c.drawImage(img2, img1.width + gap, Math.round((h - img2.height) / 2));
+        }
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
+        if (mergeDownloadUrl) URL.revokeObjectURL(mergeDownloadUrl);
+        mergeDownloadUrl = URL.createObjectURL(blob);
+        mergeDownloadBtn.href = mergeDownloadUrl;
+        mergeDownloadBtn.download = "merged_front_back.jpg";
+        mergeDownloadBtn.style.display = "inline-flex";
+        mergePreview.src = mergeDownloadUrl;
+        mergePreview.style.display = "block";
+        setResult("mergeResult", "Done. Merged image ready. Size: " + bytesToKb(blob.size) + " KB", false);
+      } catch (e) {
+        setResult("mergeResult", "Merge failed. Valid image files select karo.", true);
+      }
+    });
+  })();
+
+  // Tool 2: Resizer (existing, mobile-friendly)
+  (function () {
+    const fileInput = document.getElementById("fileInput");
+    const targetKbInput = document.getElementById("targetKbInput");
+    const widthInput = document.getElementById("widthInput");
+    const heightInput = document.getElementById("heightInput");
+    const autoWhiteCutBtn = document.getElementById("autoWhiteCutBtn");
+    const convertBtn = document.getElementById("convertBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const resultWrap = document.getElementById("resultWrap");
+    const infoText = document.getElementById("infoText");
+    const cropCanvas = document.getElementById("cropCanvas");
+    const ctx = cropCanvas.getContext("2d");
+
+    let selectedFile = null;
+    let img = null;
+    let objectUrl = "";
+    let downloadUrl = "";
+    let naturalW = 0;
+    let naturalH = 0;
+    let displayRect = { x: 0, y: 0, w: 430, h: 260 };
+    let cropRect = { x: 25, y: 15, w: 380, h: 230 };
+    let dragMode = "";
+    let dragStart = { x: 0, y: 0, rect: null };
+    const minCrop = 20;
+
+    function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
+    function imageBounds() {
+      const x1 = Math.max(displayRect.x, 0);
+      const y1 = Math.max(displayRect.y, 0);
+      const x2 = Math.min(displayRect.x + displayRect.w, cropCanvas.width);
+      const y2 = Math.min(displayRect.y + displayRect.h, cropCanvas.height);
+      return { x: x1, y: y1, w: Math.max(x2 - x1, 1), h: Math.max(y2 - y1, 1) };
     }
-    if (maxX <= minX || maxY <= minY) {
-      infoText.textContent = "White background detect nahi hua.";
-      return;
+    function resetCropRect() {
+      const b = imageBounds();
+      cropRect = { x: Math.round(b.x + b.w * 0.04), y: Math.round(b.y + b.h * 0.04), w: Math.round(b.w * 0.92), h: Math.round(b.h * 0.92) };
     }
-    const sx = displayRect.w / naturalW;
-    const sy = displayRect.h / naturalH;
-    cropRect.x = Math.round(displayRect.x + minX * sx);
-    cropRect.y = Math.round(displayRect.y + minY * sy);
-    cropRect.w = Math.max(Math.round((maxX - minX + 1) * sx), minCrop);
-    cropRect.h = Math.max(Math.round((maxY - minY + 1) * sy), minCrop);
-    cropRect.x = clamp(cropRect.x, displayRect.x, displayRect.x + displayRect.w - cropRect.w);
-    cropRect.y = clamp(cropRect.y, displayRect.y, displayRect.y + displayRect.h - cropRect.h);
+    function cropStats() {
+      const scaleX = naturalW / Math.max(displayRect.w, 1);
+      const scaleY = naturalH / Math.max(displayRect.h, 1);
+      const left = Math.max(Math.round((cropRect.x - displayRect.x) * scaleX), 0);
+      const top = Math.max(Math.round((cropRect.y - displayRect.y) * scaleY), 0);
+      const right = Math.max(Math.round((displayRect.x + displayRect.w - (cropRect.x + cropRect.w)) * scaleX), 0);
+      const bottom = Math.max(Math.round((displayRect.y + displayRect.h - (cropRect.y + cropRect.h)) * scaleY), 0);
+      const w = Math.max(Math.round(cropRect.w * scaleX), 1);
+      const h = Math.max(Math.round(cropRect.h * scaleY), 1);
+      return { left, top, right, bottom, w, h };
+    }
+    function draw() {
+      ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+      ctx.fillStyle = "#eef2ff";
+      ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+      if (!img) {
+        ctx.fillStyle = "#334155";
+        ctx.font = "14px Arial";
+        ctx.fillText("Photo select karo", 16, 26);
+        return;
+      }
+      const canvasRatio = cropCanvas.width / cropCanvas.height;
+      const imgRatio = naturalW / naturalH;
+      if (imgRatio > canvasRatio) {
+        displayRect.w = cropCanvas.width;
+        displayRect.h = Math.round(displayRect.w / imgRatio);
+        displayRect.x = 0;
+        displayRect.y = Math.round((cropCanvas.height - displayRect.h) / 2);
+      } else {
+        displayRect.h = cropCanvas.height;
+        displayRect.w = Math.round(displayRect.h * imgRatio);
+        displayRect.y = 0;
+        displayRect.x = Math.round((cropCanvas.width - displayRect.w) / 2);
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+      ctx.drawImage(img, displayRect.x, displayRect.y, displayRect.w, displayRect.h);
+      ctx.strokeStyle = "#16a34a";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+      const handle = 8;
+      const points = [
+        [cropRect.x, cropRect.y],
+        [cropRect.x + cropRect.w, cropRect.y],
+        [cropRect.x, cropRect.y + cropRect.h],
+        [cropRect.x + cropRect.w, cropRect.y + cropRect.h],
+        [cropRect.x + cropRect.w / 2, cropRect.y],
+        [cropRect.x + cropRect.w / 2, cropRect.y + cropRect.h],
+        [cropRect.x, cropRect.y + cropRect.h / 2],
+        [cropRect.x + cropRect.w, cropRect.y + cropRect.h / 2],
+      ];
+      ctx.fillStyle = "#16a34a";
+      points.forEach(([px, py]) => ctx.fillRect(px - handle / 2, py - handle / 2, handle, handle));
+      infoText.textContent = "Crop: " + cropStats().w + "x" + cropStats().h + " px";
+    }
+    function pointerPos(evt) {
+      const rect = cropCanvas.getBoundingClientRect();
+      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+    function inHandle(p, x, y, r) {
+      return Math.abs(p.x - x) <= r && Math.abs(p.y - y) <= r;
+    }
+    function pickMode(p) {
+      const r = 12;
+      const mx = cropRect.x + cropRect.w / 2;
+      const my = cropRect.y + cropRect.h / 2;
+      if (inHandle(p, cropRect.x, cropRect.y, r)) return "nw";
+      if (inHandle(p, cropRect.x + cropRect.w, cropRect.y, r)) return "ne";
+      if (inHandle(p, cropRect.x, cropRect.y + cropRect.h, r)) return "sw";
+      if (inHandle(p, cropRect.x + cropRect.w, cropRect.y + cropRect.h, r)) return "se";
+      if (inHandle(p, mx, cropRect.y, r)) return "n";
+      if (inHandle(p, mx, cropRect.y + cropRect.h, r)) return "s";
+      if (inHandle(p, cropRect.x, my, r)) return "w";
+      if (inHandle(p, cropRect.x + cropRect.w, my, r)) return "e";
+      if (p.x >= cropRect.x && p.x <= cropRect.x + cropRect.w && p.y >= cropRect.y && p.y <= cropRect.y + cropRect.h) return "move";
+      return "";
+    }
+    function onPointerDown(evt) {
+      if (!img) return;
+      const p = pointerPos(evt);
+      const mode = pickMode(p);
+      if (!mode) return;
+      dragMode = mode;
+      dragStart = { x: p.x, y: p.y, rect: { ...cropRect } };
+      evt.preventDefault();
+    }
+    function onPointerMove(evt) {
+      if (!dragMode) return;
+      const p = pointerPos(evt);
+      const dx = p.x - dragStart.x;
+      const dy = p.y - dragStart.y;
+      const r = dragStart.rect;
+      const b = imageBounds();
+      if (dragMode === "move") {
+        cropRect.x = clamp(r.x + dx, b.x, b.x + b.w - r.w);
+        cropRect.y = clamp(r.y + dy, b.y, b.y + b.h - r.h);
+      } else {
+        let x1 = r.x;
+        let y1 = r.y;
+        let x2 = r.x + r.w;
+        let y2 = r.y + r.h;
+        if (dragMode.includes("n")) y1 = clamp(r.y + dy, b.y, y2 - minCrop);
+        if (dragMode.includes("s")) y2 = clamp(r.y + r.h + dy, y1 + minCrop, b.y + b.h);
+        if (dragMode.includes("w")) x1 = clamp(r.x + dx, b.x, x2 - minCrop);
+        if (dragMode.includes("e")) x2 = clamp(r.x + r.w + dx, x1 + minCrop, b.x + b.w);
+        cropRect.x = x1;
+        cropRect.y = y1;
+        cropRect.w = x2 - x1;
+        cropRect.h = y2 - y1;
+      }
+      draw();
+      evt.preventDefault();
+    }
+    function onPointerUp() { dragMode = ""; }
+    function previewResult(item) {
+      resultWrap.innerHTML = `
+        <div class="result">
+          <img src="${item.url}" class="preview" alt="result">
+          <div class="mt-2 font-bold">${item.name}</div>
+          <div>Original: ${bytesToKb(item.originalSize)} KB</div>
+          <div>Converted: ${bytesToKb(item.newSize)} KB</div>
+          <div>Output: ${item.width} x ${item.height}</div>
+        </div>
+      `;
+    }
+
+    fileInput.addEventListener("change", () => {
+      const file = (fileInput.files || [])[0];
+      selectedFile = file || null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (!selectedFile) { img = null; draw(); return; }
+      objectUrl = URL.createObjectURL(selectedFile);
+      const image = new Image();
+      image.onload = () => {
+        img = image;
+        naturalW = image.width;
+        naturalH = image.height;
+        draw();
+        resetCropRect();
+        draw();
+      };
+      image.src = objectUrl;
+      const autoKb = Math.max(Math.floor(selectedFile.size / 1024) - 1, 5);
+      targetKbInput.value = String(autoKb);
+    });
+
+    autoWhiteCutBtn.addEventListener("click", () => {
+      if (!img) { infoText.textContent = "Pehle photo select karo."; return; }
+      const b = imageBounds();
+      cropRect = { x: b.x, y: b.y, w: b.w, h: b.h };
+      draw();
+    });
+
+    cropCanvas.addEventListener("mousedown", onPointerDown);
+    cropCanvas.addEventListener("mousemove", onPointerMove);
+    document.addEventListener("mouseup", onPointerUp);
+    cropCanvas.addEventListener("touchstart", onPointerDown, { passive: false });
+    cropCanvas.addEventListener("touchmove", onPointerMove, { passive: false });
+    document.addEventListener("touchend", onPointerUp);
+
+    convertBtn.addEventListener("click", async () => {
+      if (!selectedFile) { infoText.textContent = "Pehle photo select karo."; return; }
+      const reqW = parseInt(widthInput.value || "0", 10) || 0;
+      const reqH = parseInt(heightInput.value || "0", 10) || 0;
+      const targetKb = Math.max(parseInt(targetKbInput.value || "20", 10), 5);
+      const s = cropStats();
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("target_kb", String(targetKb));
+      fd.append("out_type", "image/jpeg");
+      fd.append("width", String(reqW));
+      fd.append("height", String(reqH));
+      fd.append("quality_lock", "1");
+      fd.append("strict_kb", "1");
+      fd.append("crop_mode", "custom");
+      fd.append("crop_x", String(s.left));
+      fd.append("crop_y", String(s.top));
+      fd.append("crop_w", String(s.w));
+      fd.append("crop_h", String(s.h));
+
+      const resp = await fetch("{% url 'document_converter_process' %}", {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": csrfToken }
+      });
+      if (!resp.ok) { infoText.textContent = "Convert failed."; return; }
+      const blob = await resp.blob();
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+      downloadUrl = URL.createObjectURL(blob);
+      const outName = resp.headers.get("X-Output-Name") || "converted.jpg";
+      const outW = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
+      const outH = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
+      const outSize = parseInt(resp.headers.get("X-Converted-Size") || String(blob.size), 10);
+      downloadBtn.href = downloadUrl;
+      downloadBtn.download = outName;
+      downloadBtn.style.display = "inline-flex";
+      previewResult({ url: downloadUrl, name: outName, originalSize: selectedFile.size, newSize: outSize, width: outW, height: outH });
+      infoText.textContent = "Done. Target approx: " + (targetKb - 1) + " KB";
+    });
     draw();
-  });
+  })();
 
-  cropCanvas.addEventListener("mousedown", onPointerDown);
-  cropCanvas.addEventListener("mousemove", onPointerMove);
-  document.addEventListener("mouseup", onPointerUp);
-  cropCanvas.addEventListener("touchstart", onPointerDown, { passive: false });
-  cropCanvas.addEventListener("touchmove", onPointerMove, { passive: false });
-  document.addEventListener("touchend", onPointerUp);
+  // Tool 3A: PDF -> Images
+  (function () {
+    const fileInput = document.getElementById("pdfToImageFile");
+    const formatInput = document.getElementById("pdfImageFormat");
+    const btn = document.getElementById("pdfToImageBtn");
+    const downloadBtn = document.getElementById("pdfToImageDownloadBtn");
+    const previewWrap = document.getElementById("pdfToImagePreview");
+    let downloadUrl = "";
 
-  convertBtn.addEventListener("click", async () => {
-    if (!selectedFile) {
-      infoText.textContent = "Pehle photo select karo.";
-      return;
-    }
-    const reqW = parseInt(widthInput.value || "0", 10) || 0;
-    const reqH = parseInt(heightInput.value || "0", 10) || 0;
-    const targetKb = Math.max(parseInt(targetKbInput.value || "80", 10), 10);
-    const s = cropStats();
-
-    const fd = new FormData();
-    fd.append("file", selectedFile);
-    fd.append("target_kb", String(targetKb));
-    fd.append("out_type", "image/jpeg");
-    fd.append("width", String(reqW));
-    fd.append("height", String(reqH));
-    fd.append("quality_lock", "1");
-    fd.append("strict_kb", "1");
-    fd.append("crop_mode", "custom");
-    fd.append("crop_x", String(s.left));
-    fd.append("crop_y", String(s.top));
-    fd.append("crop_w", String(s.w));
-    fd.append("crop_h", String(s.h));
-
-    const resp = await fetch("{% url 'document_converter_process' %}", {
-      method: "POST",
-      body: fd,
-      credentials: "same-origin",
-      headers: { "X-CSRFToken": "{{ csrf_token }}" }
+    btn.addEventListener("click", async () => {
+      const file = (fileInput.files || [])[0];
+      if (!file) { setResult("pdfToImageResult", "PDF select karo.", true); return; }
+      if (!window.pdfjsLib || !window.JSZip) {
+        setResult("pdfToImageResult", "PDF.js/JSZip load nahi hua. Internet on karke retry karo.", true);
+        return;
+      }
+      try {
+        setResult("pdfToImageResult", "Processing PDF pages...", false);
+        previewWrap.innerHTML = "";
+        const arrayBuffer = await file.arrayBuffer();
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const zip = new JSZip();
+        const ext = (formatInput.value || "jpg").toLowerCase() === "png" ? "png" : "jpg";
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          const mime = ext === "png" ? "image/png" : "image/jpeg";
+          const quality = ext === "png" ? undefined : 0.92;
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+          if (pageNum <= 6) {
+            const pUrl = URL.createObjectURL(blob);
+            const card = document.createElement("div");
+            card.className = "result";
+            card.innerHTML = '<img src="' + pUrl + '" class="preview" alt="Page"><div class="mt-1 text-[11px] font-semibold">Page ' + pageNum + "</div>";
+            previewWrap.appendChild(card);
+          }
+          const bytes = await blob.arrayBuffer();
+          zip.file("page_" + pageNum + "." + ext, bytes);
+        }
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+        downloadUrl = URL.createObjectURL(zipBlob);
+        const outName = "pdf_pages_images.zip";
+        downloadBtn.href = downloadUrl;
+        downloadBtn.download = outName;
+        downloadBtn.style.display = "inline-flex";
+        setResult("pdfToImageResult", "Done. Pages: " + pdf.numPages + " | ZIP ready.", false);
+      } catch (err) {
+        setResult("pdfToImageResult", "PDF to image failed. Valid PDF try karo.", true);
+      }
     });
-    if (!resp.ok) {
-      infoText.textContent = "Convert failed.";
-      return;
-    }
-    const blob = await resp.blob();
-    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-    downloadUrl = URL.createObjectURL(blob);
-    const outName = resp.headers.get("X-Output-Name") || "converted.jpg";
-    const outW = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
-    const outH = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
-    const outSize = parseInt(resp.headers.get("X-Converted-Size") || String(blob.size), 10);
+  })();
 
-    downloadBtn.href = downloadUrl;
-    downloadBtn.download = outName;
-    downloadBtn.style.display = "inline-flex";
-    previewResult({
-      url: downloadUrl,
-      name: outName,
-      originalSize: selectedFile.size,
-      newSize: outSize,
-      width: outW,
-      height: outH,
-    });
-    infoText.textContent = `Done. Target: ${targetKb - 1} KB`;
-  });
-
-  draw();
 </script>
 {% endblock %}

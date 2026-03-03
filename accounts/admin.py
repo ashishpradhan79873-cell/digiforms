@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Application, ChatMessage, PortalNews, UserDocument, UserProfile, Vacancy, WalletTransaction
+from .models import (
+    Application,
+    ChatMessage,
+    PaymentSetting,
+    PortalNews,
+    UserDocument,
+    UserProfile,
+    Vacancy,
+    WalletTransaction,
+)
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
@@ -26,7 +35,7 @@ class VacancyAdmin(admin.ModelAdmin):
 class PortalNewsAdmin(admin.ModelAdmin):
     list_display = ("title", "news_type", "target_portal", "event_date", "display_order", "is_active")
     list_filter = ("news_type", "target_portal", "is_active")
-    search_fields = ("title", "details")
+    search_fields = ("title", "details", "external_link")
     ordering = ("display_order", "-event_date", "-updated_at")
 
 
@@ -36,3 +45,8 @@ class WalletTransactionAdmin(admin.ModelAdmin):
     list_filter = ("tx_type",)
     search_fields = ("profile__user__username", "profile__full_name", "note")
     ordering = ("-created_at",)
+
+
+@admin.register(PaymentSetting)
+class PaymentSettingAdmin(admin.ModelAdmin):
+    list_display = ("upi_id", "payee_name", "amount", "is_active", "updated_at")

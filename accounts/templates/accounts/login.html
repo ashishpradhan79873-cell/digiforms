@@ -1,36 +1,91 @@
 {% extends 'base.html' %}
 
-{% block title %}Login - Government Portal{% endblock %}
-
-{% block body_class %}min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-cyan-900 text-slate-100{% endblock %}
+{% block title %}Login - Digi Form{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
 {% block page_container_class %}min-h-screen grid place-items-center p-4{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
-<div class="w-full max-w-md rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl p-6 md:p-8">
-    <p class="text-xs font-semibold uppercase tracking-wider text-cyan-200">Government Form Portal</p>
-    <h1 class="text-2xl md:text-3xl font-black mt-1">Sign In</h1>
-    <p class="text-sm text-slate-300 mt-2">Continue with your student account.</p>
+<style>
+  .auth-wrap { width:min(460px,100%); }
+  .brand-icon { width:64px; height:64px; border-radius:14px; background:#2b78da; display:grid; place-items:center; color:#fff; box-shadow:0 10px 22px rgba(43,120,218,.35); margin:0 auto; }
+  .auth-card { margin-top:20px; border:1px solid #d6deea; border-radius:16px; background:#fff; box-shadow:0 8px 24px rgba(15,23,42,.06); padding:28px; }
+  .label { font-size:14px; font-weight:700; color:#334155; }
+  .input-row { position:relative; margin-top:7px; }
+  .input { width:100%; border:1px solid #cfd8e3; background:#f8fafc; color:#0f172a; border-radius:10px; padding:12px 42px 12px 40px; font-size:16px; }
+  .input:focus { outline:none; border-color:#2b78da; box-shadow:0 0 0 3px rgba(43,120,218,.15); background:#fff; }
+  .icon-left { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:18px; }
+  .icon-btn { position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#94a3b8; cursor:pointer; }
+  .login-btn { width:100%; border-radius:10px; background:#2b78da; color:#fff; font-weight:900; padding:13px 14px; font-size:18px; }
+  .login-btn:hover { background:#2267bd; }
+</style>
+
+<section class="auth-wrap">
+  <div class="brand-icon">
+    <span class="material-symbols-outlined" style="font-size:32px;">dashboard</span>
+  </div>
+  <h1 class="mt-4 text-center text-5xl font-black text-slate-900">Digi Form</h1>
+  <p class="mt-1 text-center text-lg font-semibold text-slate-500">Admin Dashboard Access</p>
+
+  <div class="auth-card">
+    <h2 class="text-4xl font-black text-slate-900">Admin Login</h2>
 
     {% if messages %}
-        {% for message in messages %}
-            <div class="mt-4 rounded-xl border border-red-300/40 bg-red-500/20 text-red-100 px-4 py-3 text-sm font-medium">{{ message }}</div>
-        {% endfor %}
+      {% for message in messages %}
+        <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{{ message }}</div>
+      {% endfor %}
     {% endif %}
 
     <form method="post" class="mt-5 space-y-4">
-        {% csrf_token %}
-        <label class="block">
-            <span class="text-sm font-semibold text-slate-200">Username</span>
-            <input type="text" name="username" required class="mt-1 w-full rounded-xl border-white/20 bg-white/90 text-slate-900 placeholder:text-slate-500">
-        </label>
-        <label class="block">
-            <span class="text-sm font-semibold text-slate-200">Password</span>
-            <input type="password" name="password" required class="mt-1 w-full rounded-xl border-white/20 bg-white/90 text-slate-900 placeholder:text-slate-500">
-        </label>
-        <button type="submit" class="w-full rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-extrabold text-slate-900 hover:bg-cyan-300">Login</button>
+      {% csrf_token %}
+      <label class="block">
+        <span class="label">Username</span>
+        <div class="input-row">
+          <span class="material-symbols-outlined icon-left">person</span>
+          <input type="text" name="username" required class="input" placeholder="Username">
+        </div>
+      </label>
+
+      <div class="flex items-center justify-between">
+        <span class="label">Password</span>
+        <a href="{% url 'forgot_password' %}" class="text-sm font-bold text-blue-600 hover:text-blue-700">Forgot password?</a>
+      </div>
+      <div class="input-row">
+        <span class="material-symbols-outlined icon-left">lock</span>
+        <input id="passwordInput" type="password" name="password" required class="input" placeholder="Password">
+        <button id="togglePassword" class="icon-btn" type="button" aria-label="Show/Hide Password">
+          <span class="material-symbols-outlined" style="font-size:20px;">visibility</span>
+        </button>
+      </div>
+
+      <label class="flex items-center gap-2 pt-1">
+        <input type="checkbox" class="h-4 w-4 rounded border-slate-300">
+        <span class="text-sm text-slate-600">Remember this device</span>
+      </label>
+
+      <button type="submit" class="login-btn">Login to Dashboard</button>
     </form>
 
-    <p class="mt-4 text-xs text-slate-300">Demo: username `admin`, password `admin123`</p>
-</div>
+    <div class="mt-4 flex items-center gap-3 text-sm">
+      <a href="{% url 'register' %}" class="font-bold text-blue-600 hover:text-blue-700">Create Account</a>
+      <span class="text-slate-400">|</span>
+      <a href="{% url 'forgot_password' %}" class="font-bold text-blue-600 hover:text-blue-700">Reset Access</a>
+    </div>
+  </div>
+</section>
+
+<script>
+  (function () {
+    const btn = document.getElementById("togglePassword");
+    const input = document.getElementById("passwordInput");
+    if (!btn || !input) return;
+    btn.addEventListener("click", () => {
+      const isPwd = input.type === "password";
+      input.type = isPwd ? "text" : "password";
+      btn.innerHTML = isPwd
+        ? '<span class="material-symbols-outlined" style="font-size:20px;">visibility_off</span>'
+        : '<span class="material-symbols-outlined" style="font-size:20px;">visibility</span>';
+    });
+  })();
+</script>
 {% endblock %}

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Select Data To Send{% endblock %}
+{% block title %}Apply Form{% endblock %}
 {% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
 {% block page_container_class %}max-w-6xl mx-auto p-4 md:p-6{% endblock %}
 {% block page_header %}{% endblock %}
@@ -14,6 +14,10 @@
   .row-line:first-child { border-top:none; padding-top:0; }
   .row-label { color:#475569; font-weight:700; }
   .row-value { color:#0f172a; word-break:break-word; }
+  .pay-box { border:1px solid #d7e2f0; border-radius:12px; background:#f8fbff; padding:12px; }
+  .pay-btn { display:inline-flex; align-items:center; gap:6px; border-radius:10px; font-weight:800; padding:9px 14px; }
+  .hidden-panel { display:none; }
+  .hidden-panel.open { display:block; }
   @media (max-width: 640px) {
     .card { border-radius:10px; }
     .step-box { padding:10px; }
@@ -25,7 +29,7 @@
 
 <header class="card px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
   <div>
-    <h1 class="text-2xl md:text-3xl font-black">Select Master Data To Send</h1>
+    <h1 class="text-2xl md:text-3xl font-black">Apply Form</h1>
     <p class="text-sm text-slate-600 mt-1">
       Target: <span class="font-bold">{{ pending.title }}</span> ({{ pending.organization }})
     </p>
@@ -40,7 +44,7 @@
     <button type="button" id="allUntickBtn" class="inline-flex rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white">All Untick</button>
   </div>
   <h2 class="text-xl font-black">Choose Data Sections (6 Steps)</h2>
-  <p class="text-sm text-slate-600 mt-1">Jo sections select karoge wahi data admin ko send hoga.</p>
+  <p class="text-sm text-slate-600 mt-1">Jo sections select karoge wahi data apply me use hoga.</p>
 
   <div class="mt-4 space-y-3">
     {% for step in step_cards %}
@@ -107,9 +111,64 @@
   </div>
   {% endif %}
 
-  <div class="mt-5 flex flex-wrap gap-2">
-    <button type="submit" class="inline-flex rounded-xl bg-emerald-700 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-800">Apply Changes And Send To Admin</button>
+  <div id="paymentPanel" class="mt-6 pay-box hidden-panel">
+    <h2 class="text-xl font-black">Payment</h2>
+    {% if payment_setting and payment_upi_link %}
+      <div class="text-sm font-semibold text-slate-700">
+        Pay To:
+        <span class="font-black">{{ payment_setting.payee_name|default:"UPI" }}</span>
+        ({{ payment_setting.upi_id }})
+        {% if payment_setting.amount and payment_setting.amount > 0 %}
+        | Amount: Rs {{ payment_setting.amount }}
+        {% endif %}
+      </div>
+      {% if payment_setting.note %}
+      <div class="text-xs text-slate-500 mt-1">{{ payment_setting.note }}</div>
+      {% endif %}
+      {% if payment_setting.qr_image %}
+      <img src="{{ payment_setting.qr_image.url }}" alt="Payment QR" class="mt-2 w-40 rounded border border-slate-200">
+      {% endif %}
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button type="button" id="payAndSendBtn" class="pay-btn bg-emerald-700 text-white">
+          <span class="material-symbols-outlined" style="font-size:16px;">payments</span> Pay And Apply
+        </button>
+        <button type="button" id="closePaymentPanelBtn" class="pay-btn bg-slate-700 text-white">Close</button>
+      </div>
+      <a id="upiDeepLinkAnchor" href="{{ payment_upi_link }}" class="hidden" rel="noopener">UPI</a>
+    {% else %}
+      <div class="text-sm text-slate-600 font-semibold">Payment config admin ne set nahi kiya.</div>
+    {% endif %}
+  </div>
+
+  <div class="mt-5 step-box">
+    <h3 class="text-base font-black text-slate-900">Disclaimer</h3>
+    <div id="consentError" class="mt-2 hidden rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+      Form submit karne se pehle dono disclaimer tick karna anivarya hai.
+    </div>
+    <label class="mt-3 flex items-start gap-2 text-sm text-slate-700">
+      <input id="consentDataUsage" type="checkbox" name="consent_data_usage" value="1" checked class="mt-1">
+      <span>
+        Main, <strong>{{ profile.full_name|default:request.user.username }}</strong>, pramanit karta hoon ki di gayi sabhi jankari sahi hai
+        aur main apni marzi se ye data form-filling ke liye de raha hoon.
+        Digi Form is data ka upyog keval mere aavedan <strong>{{ pending.title }}</strong> ke liye karega.
+      </span>
+    </label>
+    <label class="mt-3 flex items-start gap-2 text-sm text-slate-700">
+      <input id="consentUserResponsibility" type="checkbox" name="consent_user_responsibility" value="1" checked class="mt-1">
+      <span>
+        Main, <strong>{{ profile.full_name|default:request.user.username }}</strong>, pramanit karta hoon ki upar di gayi sabhi jankari (Data) sahi hai.
+        Kisi bhi galat jankari ya error ki wajah se <strong>{{ pending.title }}</strong> form reject hone par puri zimmedari meri (User ki) hogi
+        aur Digi Form iske liye utardayi nahi hoga.
+      </span>
+    </label>
+  </div>
+
+  <div class="mt-5 flex flex-wrap items-center gap-2">
+    <button type="submit" name="submit_mode" value="skip" class="inline-flex rounded-xl bg-emerald-700 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-800">Apply Changes Send To Admin</button>
     <a href="{% url 'role_select' %}" class="inline-flex rounded-xl bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-black">Back</a>
+    <button type="button" id="openPaymentPanelBtn" class="inline-flex rounded-xl bg-blue-700 px-5 py-2 text-sm font-bold text-white hover:bg-blue-800">
+      <span class="material-symbols-outlined" style="font-size:16px;">payments</span> Pay
+    </button>
   </div>
 </form>
 <script>
@@ -150,6 +209,65 @@
         });
       });
     });
+
+    const consentData = document.getElementById("consentDataUsage");
+    const consentUser = document.getElementById("consentUserResponsibility");
+    const consentError = document.getElementById("consentError");
+    const mainForm = document.querySelector("form[method='post']");
+
+    function ensureConsents() {
+      const ok = !!(consentData && consentData.checked && consentUser && consentUser.checked);
+      if (consentError) consentError.classList.toggle("hidden", ok);
+      return ok;
+    }
+
+    [consentData, consentUser].forEach((cb) => {
+      if (!cb) return;
+      cb.addEventListener("change", ensureConsents);
+    });
+
+    if (mainForm) {
+      mainForm.addEventListener("submit", function (e) {
+        if (!ensureConsents()) {
+          e.preventDefault();
+          if (consentError) consentError.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    }
+
+    const payBtn = document.getElementById("payAndSendBtn");
+    const upiAnchor = document.getElementById("upiDeepLinkAnchor");
+    const paymentPanel = document.getElementById("paymentPanel");
+    const openPaymentPanelBtn = document.getElementById("openPaymentPanelBtn");
+    const closePaymentPanelBtn = document.getElementById("closePaymentPanelBtn");
+    if (openPaymentPanelBtn && paymentPanel) {
+      openPaymentPanelBtn.addEventListener("click", function () {
+        paymentPanel.classList.add("open");
+        paymentPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+    if (closePaymentPanelBtn && paymentPanel) {
+      closePaymentPanelBtn.addEventListener("click", function () {
+        paymentPanel.classList.remove("open");
+      });
+    }
+    if (payBtn && upiAnchor) {
+      payBtn.addEventListener("click", function () {
+        if (!ensureConsents()) {
+          if (consentError) consentError.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+        const form = payBtn.closest("form");
+        if (!form) return;
+        const modeInput = document.createElement("input");
+        modeInput.type = "hidden";
+        modeInput.name = "submit_mode";
+        modeInput.value = "pay";
+        form.appendChild(modeInput);
+        window.location.href = upiAnchor.href;
+        setTimeout(() => form.submit(), 500);
+      });
+    }
 
   })();
 </script>

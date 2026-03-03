@@ -7,7 +7,7 @@
 
 {% block content %}
 <style>
-  .topbar { background:#0b2f5e; color:#fff; }
+  .topbar { background:#0b63ce; color:#fff; }
   .wrap { padding:18px 20px 24px; }
   .article, .side { background:#fff; border:1px solid #d8dfeb; border-radius:16px; }
   .side-item { display:block; border-bottom:1px solid #e2e8f0; padding:12px 0; text-decoration:none; color:inherit; }
@@ -15,6 +15,7 @@
   .side-item:hover .ttl { color:#0b63ce; }
   .grid { display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
   .btn-back { border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:8px 10px; font-weight:800; font-size:12px; }
+  .cta-btn { border:1px solid #d4dcea; border-radius:10px; padding:8px 12px; font-weight:800; font-size:13px; display:inline-flex; align-items:center; gap:6px; }
   @media (max-width: 980px) { .grid { grid-template-columns:1fr; } .wrap { padding:12px; } }
 </style>
 
@@ -30,6 +31,18 @@
   <div class="grid">
     <article class="article p-6">
       <h1 class="mt-3 text-2xl md:text-4xl font-black leading-tight" style="color: {{ news_item.title_color|default:'#0f172a' }};">{{ news_item.title }}</h1>
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        {% if news_item.external_link %}
+        <a href="{{ news_item.external_link }}" target="_blank" rel="noopener" class="cta-btn text-emerald-700">
+          Open Official Link <span class="material-symbols-outlined" style="font-size:18px;">link</span>
+        </a>
+        {% endif %}
+        {% if news_item.details_pdf %}
+        <a href="{{ news_item.details_pdf.url }}" target="_blank" rel="noopener" class="cta-btn text-blue-700">
+          Open PDF <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>
+        </a>
+        {% endif %}
+      </div>
       <div class="mt-5 text-sm md:text-base leading-7 whitespace-pre-line" style="color: {{ news_item.details_color|default:'#334155' }};">{{ news_item.details|default:"No details available." }}</div>
     </article>
 
@@ -48,3 +61,4 @@
   </div>
 </div>
 {% endblock %}
+

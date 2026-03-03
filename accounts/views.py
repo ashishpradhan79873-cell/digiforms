@@ -10,6 +10,7 @@ from django.views.decorators.http import require_POST
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import io
+import zipfile
 
 from .models import DocumentRule, PortalNews, UserDocument, UserProfile, WalletTransaction
 from PIL import Image, ImageOps
@@ -124,14 +125,44 @@ def _step_context(profile, current_step_key):
 
 def _news_for_master_page():
     try:
-        return PortalNews.objects.filter(is_active=True).filter(
+        qs = PortalNews.objects.filter(is_active=True).filter(
             Q(target_portal=PortalNews.TARGET_ALL)
             | Q(target_portal=PortalNews.TARGET_GOVERNMENT)
             | Q(target_portal=PortalNews.TARGET_STUDENT)
-        )[:6]
+        )
+        qs.exists()
+        return qs[:6]
     except (OperationalError, ProgrammingError):
         # News table migrate na ho to page normal render hona chahiye.
         return PortalNews.objects.none()
+
+
+def _mobile_key(value):
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _find_profile_by_mobile(raw_mobile):
+    key = _mobile_key(raw_mobile)
+    if not key:
+        return None
+    for profile in UserProfile.objects.select_related("user").exclude(mobile=""):
+        if _mobile_key(profile.mobile) == key:
+            return profile
+    return None
+
+
+def _build_extra_rows(labels, values, permanents=None):
+    output = []
+    permanents = permanents or []
+    max_len = max(len(labels), len(values))
+    for idx in range(max_len):
+        label = labels[idx].strip() if idx < len(labels) else ""
+        value = values[idx].strip() if idx < len(values) else ""
+        is_permanent = idx < len(permanents) and str(permanents[idx]).strip() in {"1", "true", "on", "yes"}
+        if not label and not value:
+            continue
+        output.append({"label": label, "value": value, "is_permanent": is_permanent})
+    return output
 
 
 def login_view(request):
@@ -159,16 +190,21 @@ def register_view(request):
         return redirect("role_select")
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
-        email = request.POST.get("email", "").strip()
+        mobile = request.POST.get("mobile", "").strip()
         password = request.POST.get("password", "")
         confirm = request.POST.get("confirm", "")
-        if password != confirm:
+        mobile_norm = _mobile_key(mobile)
+        if not username or not mobile_norm or not password:
+            messages.error(request, "Username, mobile number aur password required hai.")
+        elif password != confirm:
             messages.error(request, "Password match nahi kiya!")
         elif User.objects.filter(username=username).exists():
             messages.error(request, "Username pehle se exist karta hai!")
+        elif _find_profile_by_mobile(mobile_norm):
+            messages.error(request, "Ye mobile number already registered hai.")
         else:
-            user = User.objects.create_user(username=username, email=email, password=password)
-            UserProfile.objects.create(user=user, email=email)
+            user = User.objects.create_user(username=username, password=password)
+            UserProfile.objects.create(user=user, mobile=mobile_norm)
             login(request, user)
             messages.success(request, "Account ban gaya! Ab Master Data bharo.")
             return redirect("master_data_option")
@@ -178,6 +214,37 @@ def register_view(request):
 def logout_view(request):
     logout(request)
     return redirect("login")
+
+
+def forgot_password_view(request):
+    if request.user.is_authenticated:
+        return redirect("role_select")
+    if request.method == "POST":
+        mobile = request.POST.get("mobile", "").strip()
+        new_password = request.POST.get("new_password", "")
+        confirm = request.POST.get("confirm_password", "")
+        if not mobile or not new_password:
+            messages.error(request, "Mobile number aur new password required hai.")
+            return redirect("forgot_password")
+        if new_password != confirm:
+            messages.error(request, "New password aur confirm password same hona chahiye.")
+            return redirect("forgot_password")
+        profile = _find_profile_by_mobile(mobile)
+        if not profile or not profile.user:
+            messages.error(request, "Mobile number register nahi hai.")
+            return redirect("forgot_password")
+
+        user = profile.user
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        return render(
+            request,
+            "accounts/forgot_password_success.html",
+            {
+                "username": user.username,
+            },
+        )
+    return render(request, "accounts/forgot_password.html")
 
 
 @login_required
@@ -375,6 +442,24 @@ def _clamp_crop_box(img_w, img_h, x, y, w, h):
     return x, y, w, h
 
 
+def _open_image_from_upload(file_obj):
+    image = Image.open(file_obj)
+    image = ImageOps.exif_transpose(image)
+    if image.mode in ("RGBA", "LA", "P"):
+        bg = Image.new("RGB", image.size, (255, 255, 255))
+        if image.mode == "P":
+            image = image.convert("RGBA")
+        if image.mode in ("RGBA", "LA"):
+            alpha = image.getchannel("A")
+            bg.paste(image.convert("RGB"), mask=alpha)
+        else:
+            bg.paste(image.convert("RGB"))
+        return bg
+    if image.mode != "RGB":
+        return image.convert("RGB")
+    return image
+
+
 @login_required
 @require_POST
 def document_converter_process_view(request):
@@ -530,6 +615,143 @@ def document_converter_process_view(request):
 
 
 @login_required
+@require_POST
+def document_converter_images_to_pdf_view(request):
+    image_files = request.FILES.getlist("images")
+    if not image_files:
+        return JsonResponse({"error": "Kam se kam 1 image select karo."}, status=400)
+
+    opened = []
+    for f in image_files:
+        if not (f.content_type or "").startswith("image/"):
+            return JsonResponse({"error": f"{f.name}: sirf image files allowed hain."}, status=400)
+        try:
+            opened.append(_open_image_from_upload(f))
+        except Exception:
+            return JsonResponse({"error": f"{f.name}: image read nahi hui."}, status=400)
+
+    if not opened:
+        return JsonResponse({"error": "Valid images nahi mili."}, status=400)
+
+    pdf_buffer = io.BytesIO()
+    first, rest = opened[0], opened[1:]
+    first.save(pdf_buffer, format="PDF", save_all=True, append_images=rest)
+    pdf_bytes = pdf_buffer.getvalue()
+    for im in opened:
+        try:
+            im.close()
+        except Exception:
+            pass
+
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="merged_documents.pdf"'
+    response["X-Output-Name"] = "merged_documents.pdf"
+    response["X-Output-Size"] = str(len(pdf_bytes))
+    return response
+
+
+@login_required
+@require_POST
+def document_converter_pdf_to_images_view(request):
+    pdf_file = request.FILES.get("pdf")
+    if not pdf_file:
+        return JsonResponse({"error": "PDF file missing."}, status=400)
+    if (pdf_file.content_type or "").lower() != "application/pdf":
+        return JsonResponse({"error": "Sirf PDF file upload karo."}, status=400)
+
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        return JsonResponse(
+            {
+                "error": "PDF to image ke liye server dependency missing hai (PyMuPDF). Install hone ke baad ye feature chalega."
+            },
+            status=400,
+        )
+
+    try:
+        data = pdf_file.read()
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception:
+        return JsonResponse({"error": "PDF read nahi ho payi."}, status=400)
+
+    if doc.page_count == 0:
+        return JsonResponse({"error": "PDF me pages nahi mile."}, status=400)
+
+    image_format = request.POST.get("format", "jpg").strip().lower()
+    if image_format not in {"jpg", "png"}:
+        image_format = "jpg"
+    ext = "jpg" if image_format == "jpg" else "png"
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for idx in range(doc.page_count):
+            page = doc.load_page(idx)
+            pix = page.get_pixmap(alpha=False)
+            if ext == "jpg":
+                img_bytes = pix.tobytes("jpeg")
+            else:
+                img_bytes = pix.tobytes("png")
+            zf.writestr(f"page_{idx + 1}.{ext}", img_bytes)
+    doc.close()
+
+    zip_bytes = zip_buffer.getvalue()
+    response = HttpResponse(zip_bytes, content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="pdf_pages_images.zip"'
+    response["X-Output-Name"] = "pdf_pages_images.zip"
+    response["X-Output-Size"] = str(len(zip_bytes))
+    return response
+
+
+@login_required
+@require_POST
+def document_converter_ocr_view(request):
+    src_file = request.FILES.get("file")
+    if not src_file:
+        return JsonResponse({"error": "File missing."}, status=400)
+
+    try:
+        import pytesseract
+    except Exception:
+        return JsonResponse(
+            {"error": "OCR dependency missing hai (pytesseract). Install hone ke baad OCR chalega."},
+            status=400,
+        )
+
+    image = None
+    if (src_file.content_type or "").startswith("image/"):
+        try:
+            image = _open_image_from_upload(src_file)
+        except Exception:
+            return JsonResponse({"error": "Image read nahi hui."}, status=400)
+    elif (src_file.content_type or "").lower() == "application/pdf":
+        try:
+            import fitz
+        except Exception:
+            return JsonResponse({"error": "PDF OCR ke liye PyMuPDF required hai."}, status=400)
+        try:
+            data = src_file.read()
+            doc = fitz.open(stream=data, filetype="pdf")
+            if doc.page_count == 0:
+                return JsonResponse({"error": "PDF me pages nahi mile."}, status=400)
+            pix = doc.load_page(0).get_pixmap(alpha=False)
+            image = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+            doc.close()
+        except Exception:
+            return JsonResponse({"error": "PDF read nahi hui."}, status=400)
+    else:
+        return JsonResponse({"error": "Image ya PDF upload karo."}, status=400)
+
+    try:
+        lang = request.POST.get("lang", "eng").strip() or "eng"
+        text = pytesseract.image_to_string(image, lang=lang)
+    except Exception:
+        return JsonResponse({"error": "OCR process fail ho gaya."}, status=500)
+
+    return JsonResponse({"text": text or "", "chars": len(text or "")})
+
+
+@login_required
 def role_select_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     return render(
@@ -564,11 +786,8 @@ def master_data_personal_view(request):
         profile.samagra_id = p.get("samagra_id", "")
         extra_labels = p.getlist("personal_extra_label[]")
         extra_values = p.getlist("personal_extra_value[]")
-        profile.personal_extra_rows = [
-            {"label": label.strip(), "value": value.strip()}
-            for label, value in zip(extra_labels, extra_values)
-            if label.strip() or value.strip()
-        ]
+        extra_permanent = p.getlist("personal_extra_permanent[]")
+        profile.personal_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
         profile.save()
         return redirect("master_data_address")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "personal"))
@@ -604,11 +823,8 @@ def master_data_address_view(request):
         profile.permanent_address = profile.permanent_full_address or profile.present_address
         extra_labels = p.getlist("address_extra_label[]")
         extra_values = p.getlist("address_extra_value[]")
-        profile.address_extra_rows = [
-            {"label": label.strip(), "value": value.strip()}
-            for label, value in zip(extra_labels, extra_values)
-            if label.strip() or value.strip()
-        ]
+        extra_permanent = p.getlist("address_extra_permanent[]")
+        profile.address_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
         profile.save()
         return redirect("master_data_academic")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "address"))
@@ -630,11 +846,8 @@ def master_data_academic_view(request):
         profile.graduation = p.get("graduation", "")
         extra_labels = p.getlist("academic_extra_label[]")
         extra_values = p.getlist("academic_extra_value[]")
-        profile.academic_extra_rows = [
-            {"label": label.strip(), "value": value.strip()}
-            for label, value in zip(extra_labels, extra_values)
-            if label.strip() or value.strip()
-        ]
+        extra_permanent = p.getlist("academic_extra_permanent[]")
+        profile.academic_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
         profile.save()
         return redirect("master_data_college")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "academic"))
@@ -653,11 +866,8 @@ def master_data_college_view(request):
         profile.university = profile.university_name
         extra_labels = p.getlist("college_extra_label[]")
         extra_values = p.getlist("college_extra_value[]")
-        profile.college_extra_rows = [
-            {"label": label.strip(), "value": value.strip()}
-            for label, value in zip(extra_labels, extra_values)
-            if label.strip() or value.strip()
-        ]
+        extra_permanent = p.getlist("college_extra_permanent[]")
+        profile.college_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
         profile.save()
         return redirect("master_data_bank")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "college"))
@@ -676,11 +886,8 @@ def master_data_bank_view(request):
         profile.aadhaar_linked = p.get("aadhaar_linked", "")
         extra_labels = p.getlist("bank_extra_label[]")
         extra_values = p.getlist("bank_extra_value[]")
-        profile.bank_extra_rows = [
-            {"label": label.strip(), "value": value.strip()}
-            for label, value in zip(extra_labels, extra_values)
-            if label.strip() or value.strip()
-        ]
+        extra_permanent = p.getlist("bank_extra_permanent[]")
+        profile.bank_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
         profile.save()
         return redirect("master_data_documents")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "bank"))

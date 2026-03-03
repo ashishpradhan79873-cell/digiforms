@@ -7,7 +7,7 @@
 
 {% block content %}
 <style>
-  .nav-top { background:#073266; color:#fff; }
+  .nav-top { background:#0b63ce; color:#fff; }
   .page-wrap { padding: 18px 20px 26px; }
   .profile-card, .vacancy-card { background:#fff; border:1px solid #d7dde7; border-radius:16px; }
   .vacancy-card { overflow:hidden; position:relative; }
@@ -70,14 +70,9 @@
     {% endfor %}
   {% endif %}
 
-  <section class="profile-card p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-    <div>
-      <h1 class="text-2xl md:text-4xl font-black leading-tight">{{ profile.full_name|default:request.user.username }}</h1>
-      <p class="text-sm md:text-lg text-slate-600">Applicant ID: #{{ profile.id }}</p>
-    </div>
-    <span class="rounded-full border border-emerald-300 bg-emerald-100 px-4 md:px-6 py-2 md:py-3 text-xs md:text-xl font-black text-emerald-700">
-      Master Profile: {{ profile.completion_percent }}% Complete
-    </span>
+  <section class="profile-card p-6">
+    <h1 class="text-2xl md:text-4xl font-black leading-tight">Government Vacancies</h1>
+    <p class="text-sm md:text-lg text-slate-600 mt-1">Government category forms ke liye vacancies select karo.</p>
   </section>
 
   <section class="mt-8">

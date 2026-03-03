@@ -22,6 +22,18 @@
 </head>
 <body class="{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}">
     <main class="{% block page_container_class %}max-w-5xl mx-auto p-4 md:p-6{% endblock %}">
+        {% if breadcrumbs and breadcrumbs|length > 1 %}
+        <nav class="mb-4 overflow-x-auto whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+            {% for crumb in breadcrumbs %}
+                {% if forloop.last %}
+                    <span class="font-bold text-slate-800">{{ crumb.label }}</span>
+                {% else %}
+                    <a href="{{ crumb.url }}" class="font-semibold text-blue-700 hover:underline">{{ crumb.label }}</a>
+                    <span class="mx-1 text-slate-400">></span>
+                {% endif %}
+            {% endfor %}
+        </nav>
+        {% endif %}
         {% block page_header %}
         <header class="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
