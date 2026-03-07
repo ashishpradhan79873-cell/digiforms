@@ -16,6 +16,17 @@
   .layout.compact .side .menu-link { justify-content:center; }
   .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
   .menu-link.active { background:#dcecff; color:#0c4a9a; }
+.menu-link .material-symbols-outlined { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:#fff; margin:0; font-size:19px; box-shadow:0 6px 14px rgba(15,23,42,.12); }
+.side nav .menu-link:nth-of-type(1) .material-symbols-outlined { background:linear-gradient(135deg,#8e24aa,#ba68c8); }
+.side nav .menu-link:nth-of-type(2) .material-symbols-outlined { background:linear-gradient(135deg,#1565c0,#42a5f5); }
+.side nav .menu-link:nth-of-type(3) .material-symbols-outlined { background:linear-gradient(135deg,#ef6c00,#ffb74d); }
+.side nav .menu-link:nth-of-type(4) .material-symbols-outlined { background:linear-gradient(135deg,#00897b,#26a69a); }
+.side nav .menu-link:nth-of-type(5) .material-symbols-outlined { background:linear-gradient(135deg,#f9a825,#ffd54f); color:#1f2937; }
+.side nav .menu-link:nth-of-type(6) .material-symbols-outlined { background:linear-gradient(135deg,#2e7d32,#66bb6a); }
+.side nav .menu-link:nth-of-type(7) .material-symbols-outlined { background:linear-gradient(135deg,#c62828,#ef5350); }
+.side nav .menu-link:nth-of-type(8) .material-symbols-outlined { background:linear-gradient(135deg,#283593,#5c6bc0); }
+.side nav .menu-link:nth-of-type(9) .material-symbols-outlined { background:linear-gradient(135deg,#4b5563,#9ca3af); }
+.menu-link.active .material-symbols-outlined { transform: translateY(-1px); box-shadow:0 8px 18px rgba(29,78,216,.25); }
   .panel { padding:16px; min-width:0; }
   .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
   .mini-input { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:13px; }
@@ -33,6 +44,7 @@
       <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
       <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
       <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_master_data_control' %}"><span class="material-symbols-outlined">table_chart</span><span class="menu-label">Master Data</span></a>
       <a class="menu-link active" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
       <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
       <a class="menu-link" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
@@ -136,3 +148,4 @@
   })();
 </script>
 {% endblock %}
+

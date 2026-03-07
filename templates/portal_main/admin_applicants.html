@@ -17,6 +17,17 @@
   .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
   .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
   .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .menu-link .material-symbols-outlined { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:#fff; font-size:19px; box-shadow:0 6px 14px rgba(15,23,42,.12); }
+  .side nav .menu-link:nth-of-type(1) .material-symbols-outlined { background:linear-gradient(135deg,#8e24aa,#ba68c8); }
+  .side nav .menu-link:nth-of-type(2) .material-symbols-outlined { background:linear-gradient(135deg,#1565c0,#42a5f5); }
+  .side nav .menu-link:nth-of-type(3) .material-symbols-outlined { background:linear-gradient(135deg,#ef6c00,#ffb74d); }
+  .side nav .menu-link:nth-of-type(4) .material-symbols-outlined { background:linear-gradient(135deg,#00897b,#26a69a); }
+  .side nav .menu-link:nth-of-type(5) .material-symbols-outlined { background:linear-gradient(135deg,#f9a825,#ffd54f); color:#1f2937; }
+  .side nav .menu-link:nth-of-type(6) .material-symbols-outlined { background:linear-gradient(135deg,#2e7d32,#66bb6a); }
+  .side nav .menu-link:nth-of-type(7) .material-symbols-outlined { background:linear-gradient(135deg,#c62828,#ef5350); }
+  .side nav .menu-link:nth-of-type(8) .material-symbols-outlined { background:linear-gradient(135deg,#283593,#5c6bc0); }
+  .side nav .menu-link:nth-of-type(9) .material-symbols-outlined { background:linear-gradient(135deg,#4b5563,#9ca3af); }
+  .menu-link.active .material-symbols-outlined { transform:translateY(-1px); box-shadow:0 8px 18px rgba(29,78,216,.25); }
   .panel { padding:16px; min-width:0; }
   .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
   .tabs { display:flex; gap:8px; flex-wrap:wrap; }
@@ -46,7 +57,9 @@
   .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .detail-row { border:1px solid #dbe2ee; border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; gap:10px; }
   .doc-card { border:1px solid #dbe2ee; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .copy-btn { border:1px solid #d2dbe8; background:#fff; border-radius:8px; padding:3px 8px; font-size:12px; font-weight:800; }
+  .copy-btn { border:1px solid #d2dbe8; background:#fff; border-radius:8px; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; color:#334155; }
+  .copy-btn .material-symbols-outlined { font-size:17px; line-height:1; }
+  .copy-btn.copied { color:#15803d; border-color:#86efac; background:#f0fdf4; }
   @media (max-width: 1100px){
     .layout, .layout.compact { grid-template-columns:1fr; }
     .panel { padding:12px; }
@@ -69,6 +82,7 @@
       <a class="menu-link active" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
       <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
       <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_master_data_control' %}"><span class="material-symbols-outlined">table_chart</span><span class="menu-label">Master Data</span></a>
       <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
       <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
       <a class="menu-link" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
@@ -128,7 +142,7 @@
         </thead>
         <tbody>
           {% for app in applications %}
-          <tr class="border-t border-slate-200 align-top app-row" data-search="{{ app.id }} {{ app.profile.id }} {{ app.profile.full_name|lower }} {{ app.profile.mobile }} {{ app.vacancy.title|lower }}">
+          <tr class="border-t border-slate-200 align-top app-row" data-app-row="{{ app.id }}" data-search="{{ app.id }} {{ app.profile.id }} {{ app.profile.full_name|lower }} {{ app.profile.mobile }} {{ app.vacancy.title|lower }}">
             <td class="font-bold">#{{ app.id }}</td>
             <td>{{ app.profile.full_name }}</td>
             <td>{{ app.profile.dob|date:'Y-m-d' }}</td>
@@ -150,16 +164,16 @@
                 >
                   <span class="material-symbols-outlined" style="font-size:16px;">visibility</span> View
                 </button>
-                <form method="post" action="{% url 'admin_update_application' app.id %}">
+                <form method="post" action="{% url 'admin_update_application' app.id %}" class="js-admin-app-form" data-app-id="{{ app.id }}" data-form-kind="cancel">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="cancel">
                   <button class="btn btn-red" type="submit">Cancel</button>
                 </form>
-                <form method="post" action="{% url 'admin_remove_application' app.id %}">
+                <form method="post" action="{% url 'admin_remove_application' app.id %}" class="js-admin-app-form" data-app-id="{{ app.id }}" data-form-kind="remove">
                   {% csrf_token %}
                   <button class="btn btn-red" type="submit">Remove</button>
                 </form>
-                <form method="post" action="{% url 'admin_update_application' app.id %}" class="flex gap-1">
+                <form method="post" action="{% url 'admin_update_application' app.id %}" class="flex gap-1 js-admin-app-form" data-app-id="{{ app.id }}" data-form-kind="status">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="set_status">
                   <select name="status" class="compact-select">
@@ -179,6 +193,51 @@
           {% endfor %}
         </tbody>
       </table>
+    </section>
+
+    <section class="block mt-4 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-2xl font-black">Applicants History</h2>
+        <form method="post" action="{% url 'admin_clear_history' %}" id="clearHistoryForm">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-red">Clear All History</button>
+        </form>
+      </div>
+      <div class="mt-3 table-wrap">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr>
+              <th class="px-3 py-2">Time</th>
+              <th class="px-3 py-2">Applicant</th>
+              <th class="px-3 py-2">Vacancy</th>
+              <th class="px-3 py-2">Action</th>
+              <th class="px-3 py-2">Note</th>
+              <th class="px-3 py-2">By</th>
+              <th class="px-3 py-2">Remove</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in history_rows %}
+            <tr class="border-t border-slate-200" data-history-row="{{ h.id }}">
+              <td class="px-3 py-2">{{ h.created_at|date:"Y-m-d H:i" }}</td>
+              <td class="px-3 py-2">{{ h.profile_name|default:h.applicant_username }}</td>
+              <td class="px-3 py-2">{{ h.vacancy_title }}</td>
+              <td class="px-3 py-2">{{ h.get_action_display }}</td>
+              <td class="px-3 py-2">{{ h.note }}</td>
+              <td class="px-3 py-2">{{ h.actor_username }}</td>
+              <td class="px-3 py-2">
+                <form method="post" action="{% url 'admin_remove_history_entry' h.id %}" class="js-history-remove" data-history-id="{{ h.id }}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-red">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="px-3 py-3 text-slate-500">No history yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 </div>
@@ -218,7 +277,7 @@
   function rowHtml(label, value) {
     const safeLabel = escapeHtml(label);
     const safeValue = escapeHtml(value || "-");
-    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${safeValue}">Copy</button></div>`;
+    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${safeValue}" title="Copy"><span class="material-symbols-outlined">content_copy</span></button></div>`;
   }
 
   function sectionHtml(title, rows) {
@@ -259,7 +318,7 @@
                 </div>
                 <div class="flex gap-1">
                   <a class="btn btn-green" href="${doc.url}" download>Download</a>
-                  <button type="button" class="copy-btn" data-copy="${escapeHtml(doc.url)}">Copy Link</button>
+                  <button type="button" class="copy-btn" data-copy="${escapeHtml(doc.url)}" title="Copy Link"><span class="material-symbols-outlined">content_copy</span></button>
                 </div>
               </div>
             `).join("")}
@@ -277,8 +336,12 @@
         copyBtn.addEventListener("click", async () => {
           try {
             await navigator.clipboard.writeText(copyBtn.dataset.copy || "");
-            copyBtn.textContent = "Copied";
-            setTimeout(() => { copyBtn.textContent = "Copy"; }, 1000);
+            copyBtn.classList.add("copied");
+            copyBtn.innerHTML = '<span class="material-symbols-outlined">done</span>';
+            setTimeout(() => {
+              copyBtn.classList.remove("copied");
+              copyBtn.innerHTML = '<span class="material-symbols-outlined">content_copy</span>';
+            }, 1000);
           } catch (e) {}
         });
       });
@@ -312,6 +375,68 @@
       if (emptyRow) {
         emptyRow.style.display = visible ? "none" : "";
       }
+    });
+  }
+
+  document.querySelectorAll(".js-admin-app-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
+      try {
+        const resp = await fetch(form.action, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: new FormData(form),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error("submit failed");
+        const row = document.querySelector(`[data-app-row="${form.dataset.appId}"]`);
+        if (!row) return;
+        if (form.dataset.formKind === "remove") {
+          row.remove();
+          return;
+        }
+        const statusCell = row.querySelector(".status");
+        if (statusCell && data.status_label) {
+          statusCell.textContent = data.status_label;
+          statusCell.className = "status " + (data.status || "");
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll(".js-history-remove").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const resp = await fetch(form.action, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        body: new FormData(form),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return;
+      const row = document.querySelector(`[data-history-row="${form.dataset.historyId}"]`);
+      if (row) row.remove();
+    });
+  });
+
+  const clearHistoryForm = document.getElementById("clearHistoryForm");
+  if (clearHistoryForm) {
+    clearHistoryForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const resp = await fetch(clearHistoryForm.action, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        body: new FormData(clearHistoryForm),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return;
+      document.querySelectorAll("[data-history-row]").forEach((r) => r.remove());
     });
   }
 </script>

@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Profile Preview{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-6xl mx-auto p-4 md:p-6{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .card { background:#fff; border:1px solid #d7dde7; border-radius:14px; }
+  .sec { border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fff; }
+  .line { display:grid; grid-template-columns:220px 1fr; gap:10px; border-top:1px dashed #dbe3ef; padding:8px 0; font-size:13px; }
+  .line:first-child { border-top:none; padding-top:0; }
+  .lbl { color:#475569; font-weight:700; }
+  .val { color:#0f172a; word-break:break-word; }
+  .doc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+  .doc-item { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#f8fbff; }
+  .doc-item img { width:100%; height:200px; object-fit:contain; border-radius:8px; border:1px solid #cbd5e1; background:#fff; }
+  .file-box { height:200px; border-radius:8px; border:1px dashed #cbd5e1; background:#fff; display:flex; align-items:center; justify-content:center; color:#475569; font-weight:700; font-size:14px; }
+  .doc-actions { display:flex; gap:8px; margin-top:8px; }
+  .doc-btn { display:inline-flex; align-items:center; justify-content:center; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; }
+  .doc-open { background:#1d4ed8; color:#fff; }
+  .doc-download { background:#0f172a; color:#fff; }
+  @media (max-width: 640px) { .line { grid-template-columns:1fr; } }
+</style>
+
+<header class="card px-5 py-4 flex items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl md:text-3xl font-black">Profile Preview</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      {% if vacancy %}
+      Vacancy: <span class="font-bold">{{ vacancy.title }}</span> (required data + documents)
+      {% else %}
+      Master data + uploaded documents preview
+      {% endif %}
+    </p>
+  </div>
+  <a href="{% url 'confirm_send_to_admin' %}" class="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">Back</a>
+</header>
+
+<section class="card mt-4 p-4">
+  <div class="text-sm font-semibold text-slate-700">
+    Today view remaining: <span class="font-black">{{ remaining_profile_views }}</span>
+  </div>
+  {% if apply_timed_out %}
+  <div class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+    30 minutes timeout ke baad profile masking active hai.
+    {% if unmask_active %}
+      Full view active{% if unmask_until %} till {{ unmask_until|date:"H:i" }}{% endif %}.
+    {% else %}
+      Full view ke liye 10 minute unlock use karo.
+    {% endif %}
+    Aaj unlock remaining: {{ unmask_remaining_today }}.
+  </div>
+  {% endif %}
+  <form method="post" class="mt-3">
+    {% csrf_token %}
+    <button type="submit" name="action" value="unlock_apply_profile" class="inline-flex rounded-lg bg-indigo-700 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-800">
+      Unlock Full View (10 Min)
+    </button>
+  </form>
+</section>
+
+<section class="card mt-4 p-4">
+  <h2 class="text-xl font-black">Uploaded Documents / Photos</h2>
+  <div class="doc-grid mt-3">
+    {% for doc in document_links %}
+    <div class="doc-item">
+      <div class="text-sm font-black">{{ doc.title }}</div>
+      {% if doc.kind == "image" %}
+      <img src="{{ doc.url }}" alt="{{ doc.title }}">
+      {% else %}
+      <div class="file-box">Document File</div>
+      {% endif %}
+      <div class="doc-actions">
+        <a href="{{ doc.url }}" target="_blank" rel="noopener" class="doc-btn doc-open">Open</a>
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-sm text-slate-500">No photos uploaded.</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% for step_key, rows in step_data.items %}
+<section class="card mt-4 p-4">
+  <h3 class="text-lg font-black">{{ step_key|title }} Data</h3>
+  <div class="sec mt-2">
+    {% for label, value in rows %}
+    <div class="line">
+      <div class="lbl">{{ label }}</div>
+      <div class="val">{{ value|default:"-" }}</div>
+    </div>
+    {% empty %}
+    <div class="text-sm text-slate-500">No data.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

@@ -2,7 +2,9 @@ from django.contrib import admin
 
 from .models import (
     Application,
+    ApplicationHistory,
     ChatMessage,
+    MasterDataField,
     PaymentSetting,
     PortalNews,
     UserDocument,
@@ -20,7 +22,9 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 admin.site.register(UserDocument)
 admin.site.register(Application)
+admin.site.register(ApplicationHistory)
 admin.site.register(ChatMessage)
+admin.site.register(MasterDataField)
 
 
 @admin.register(Vacancy)

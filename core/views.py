@@ -2,12 +2,14 @@ import csv
 import io
 import json
 import zipfile
+import re
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -17,8 +19,10 @@ from django.utils import timezone
 
 from accounts.models import (
     Application,
+    ApplicationHistory,
     ChatMessage,
     DocumentRule,
+    MasterDataField,
     PaymentSetting,
     PortalNews,
     UserDocument,
@@ -90,6 +94,11 @@ PROFILE_DATA_STEPS = [
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 DEFAULT_REQUIRED_DOCS = []
+APPLY_PENDING_TIMEOUT_MINUTES = 30
+AUTOFILL_LOCK_HOURS = 24
+APPLY_PROFILE_DAILY_VIEW_LIMIT = 5
+APPLY_PROFILE_UNMASK_WINDOW_MINUTES = 10
+APPLY_PROFILE_UNMASK_DAILY_LIMIT = 2
 
 
 def _parse_multi_values(raw_text):
@@ -129,6 +138,187 @@ def _parse_required_doc_name(raw_value):
     if value.startswith("DOC|"):
         return "Document", value[4:].strip()
     return "Document", value
+
+
+def _norm_field_key(value):
+    raw = str(value or "").strip().lower()
+    return "".join(ch for ch in raw if ch.isalnum())
+
+
+def _build_requested_profile_rows(step_data, required_profile_fields):
+    requested = [str(item or "").strip() for item in (required_profile_fields or []) if str(item or "").strip()]
+    if not requested:
+        return {}
+
+    all_candidates = []
+    for step_key, _ in PROFILE_DATA_STEPS:
+        if step_key == "documents":
+            continue
+        for label, value in step_data.get(step_key, []):
+            all_candidates.append(
+                {
+                    "step": step_key,
+                    "label": label,
+                    "value": value or "",
+                    "norm": _norm_field_key(label),
+                }
+            )
+
+    def _alias_norms(req_norm):
+        aliases = [req_norm]
+        alias_rules = [
+            (["studentname", "candidatename", "applicantname", "name"], ["fullname"]),
+            (["fathersname", "fathername", "guardianname"], ["fathername"]),
+            (["mothersname", "mothername"], ["mothername"]),
+            (["gender", "sex"], ["gender"]),
+            (["category", "caste"], ["category"]),
+            (["dateofbirth", "dob", "birth"], ["dob", "dateofbirth"]),
+            (["contactinfo", "mobileno", "mobile"], ["mobile"]),
+            (["email", "mailid"], ["email"]),
+            (["nationality"], ["nationality"]),
+            (["state", "district"], ["presentstate", "presentdistrict"]),
+            (["religion"], ["religion"]),
+            (["maritalstatus"], ["maritalstatus"]),
+            (["rationcard"], ["rationcard", "rationcardnumber"]),
+            (["bloodgroup"], ["bloodgroup"]),
+            (["houseno", "wardno"], ["housewardno", "houseno", "wardno"]),
+            (["village", "post"], ["presentcity", "villagepost"]),
+            (["tehsil", "policest"], ["tehsilpolicest"]),
+            (["pincode", "postalcode"], ["presentpincode", "pincode"]),
+            (["aadharnumber", "aadhaarnumber", "aadhar"], ["aadhaar", "aadhar"]),
+            (["schoolname"], ["schoolname", "twelfthboard"]),
+            (["groupstream", "stream"], ["groupstream"]),
+            (["subjects"], ["subjects"]),
+            (["boardname"], ["twelfthboard", "tenthboard"]),
+            (["passingyear"], ["passingyear"]),
+            (["rollnumber"], ["twelfthrollnumber", "tenthrollnumber", "rollnumber"]),
+            (["marks", "percentage"], ["twelfthpercentage", "tenthpercentage", "marks"]),
+            (["collegename"], ["collegename"]),
+            (["subjectgroup"], ["subjectgroup", "course"]),
+        ]
+        for tokens, targets in alias_rules:
+            if any(tok in req_norm for tok in tokens):
+                aliases.extend(targets)
+        return _merge_unique_casefold(aliases)
+
+    grouped = {key: [] for key, _ in PROFILE_DATA_STEPS if key != "documents"}
+    used_idx = set()
+    for req in requested:
+        req_norm = _norm_field_key(req)
+        best_idx = None
+        for alias in _alias_norms(req_norm):
+            for idx, item in enumerate(all_candidates):
+                if idx in used_idx:
+                    continue
+                if alias and item["norm"] == alias:
+                    best_idx = idx
+                    break
+            if best_idx is not None:
+                break
+            if alias:
+                for idx, item in enumerate(all_candidates):
+                    if idx in used_idx:
+                        continue
+                    if alias in item["norm"] or item["norm"] in alias:
+                        best_idx = idx
+                        break
+            if best_idx is not None:
+                break
+
+        if best_idx is not None:
+            used_idx.add(best_idx)
+            match = all_candidates[best_idx]
+            grouped[match["step"]].append((req, match["value"]))
+        else:
+            grouped["personal"].append((req, ""))
+
+    return {k: v for k, v in grouped.items() if v}
+
+
+def _merge_unique_casefold(values):
+    merged = []
+    seen = set()
+    for item in values or []:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(text)
+    return merged
+
+
+def _classify_bulk_requirement(section_name, field_name):
+    section = str(section_name or "").strip().lower()
+    field = str(field_name or "").strip()
+    key = field.lower()
+    doc_section_tokens = {"documents", "document", "upload", "दस्तावेज", "documents (upload)"}
+    photo_tokens = {"photo", "passport photo", "signature", "sign", "thumb"}
+    document_tokens = {
+        "marksheet", "certificate", "domicile", "abc id", "id", "aadhar card", "aadhaar card",
+        "ration card", "caste", "niwas", "pdf", "document", "upload", "pan card",
+    }
+
+    if any(token in key for token in photo_tokens):
+        return "PHOTO", field
+    if section in doc_section_tokens or any(token in key for token in document_tokens):
+        return "DOC", field
+    return "DATA", field
+
+
+def _parse_bulk_requirements(raw_text):
+    docs = []
+    profile_fields = []
+    if not raw_text:
+        return docs, profile_fields
+
+    current_section = ""
+    lines = [ln.strip() for ln in str(raw_text).splitlines() if ln.strip()]
+    for line in lines:
+        lower_line = line.lower()
+        if "field name" in lower_line and "category" in lower_line:
+            continue
+        if "zaroori details" in lower_line and "remark" in lower_line:
+            continue
+
+        cols = []
+        if "\t" in line:
+            cols = [c.strip() for c in line.split("\t")]
+        else:
+            try:
+                cols = next(csv.reader([line], skipinitialspace=True))
+                cols = [c.strip() for c in cols]
+            except Exception:
+                cols = [line.strip()]
+
+        if not cols:
+            continue
+        if len(cols) == 1:
+            field_name = cols[0]
+            section_name = current_section
+        else:
+            section_name = cols[0] or current_section
+            field_name = cols[1] if len(cols) > 1 else ""
+
+        if section_name:
+            current_section = section_name
+        field_name = re.sub(r"\s+", " ", str(field_name or "")).strip().strip('"')
+        if not field_name:
+            continue
+        if field_name.startswith("(") and field_name.endswith(")"):
+            continue
+
+        kind, clean_field = _classify_bulk_requirement(current_section, field_name)
+        if not clean_field:
+            continue
+        if kind == "DATA":
+            profile_fields.append(clean_field)
+        else:
+            docs.append(f"{kind}|{clean_field}")
+
+    return _merge_unique_casefold(docs), _merge_unique_casefold(profile_fields)
 
 
 def home_router(request):
@@ -350,6 +540,260 @@ def _file_download_name(file_field):
     return raw_name.rsplit("/", 1)[-1] if raw_name else "attachment"
 
 
+def _safe_file_url(file_field):
+    if not file_field:
+        return ""
+    name = getattr(file_field, "name", "") or ""
+    if not name:
+        return ""
+    try:
+        if not default_storage.exists(name):
+            return ""
+        return file_field.url
+    except Exception:
+        return ""
+
+
+def _pending_started_at(pending):
+    if not isinstance(pending, dict):
+        return None
+    raw = pending.get("started_at")
+    if not raw:
+        return None
+    try:
+        parsed = timezone.datetime.fromisoformat(raw)
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
+def _blank_step_rows(step_data):
+    blanked = {}
+    for key, rows in (step_data or {}).items():
+        if not isinstance(rows, list):
+            blanked[key] = rows
+            continue
+        blanked[key] = [(label, "") for label, _ in rows]
+    return blanked
+
+
+def _mask_text_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= 2:
+        return "***"
+    if len(text) <= 6:
+        return text[:1] + "***"
+    return text[:2] + "***" + text[-2:]
+
+
+def _mask_step_rows(step_data):
+    masked = {}
+    for key, rows in (step_data or {}).items():
+        if not isinstance(rows, list):
+            masked[key] = rows
+            continue
+        masked[key] = [(label, _mask_text_value(value)) for label, value in rows]
+    return masked
+
+
+def _norm_label_key(value):
+    return "".join(ch for ch in str(value or "").strip().lower() if ch.isalnum())
+
+
+MASTER_FIELD_MAP = {
+    "personal": {
+        "name": "full_name",
+        "fullname": "full_name",
+        "fathername": "father_name",
+        "mothername": "mother_name",
+        "dob": "dob",
+        "dateofbirth": "dob",
+        "gender": "gender",
+        "category": "category",
+        "mobile": "mobile",
+        "mobilenumber": "mobile",
+        "email": "email",
+        "emailid": "email",
+        "aadhaar": "aadhar",
+        "aadhar": "aadhar",
+    },
+    "address": {
+        "presentstate": "present_state",
+        "presentdistrict": "present_district",
+        "presentcity": "present_city",
+        "presentcityvillage": "present_city",
+        "presentpincode": "present_pincode",
+        "presentfullnameaddress": "present_address",
+        "presentaddress": "present_address",
+        "permanentstate": "permanent_state",
+        "permanentdistrict": "permanent_district",
+        "permanentpincode": "permanent_pincode",
+        "permanentaddress": "permanent_full_address",
+        "permanentfulladdress": "permanent_full_address",
+    },
+    "academic": {
+        "10thboard": "tenth_board",
+        "10throllnumber": "tenth_roll_number",
+        "10thpercentage": "tenth_percentage",
+        "12thboard": "twelfth_board",
+        "12throllnumber": "twelfth_roll_number",
+        "12thpercentage": "twelfth_percentage",
+        "graduation": "graduation",
+    },
+    "college": {
+        "collegename": "college_name",
+        "university": "university_name",
+        "universityname": "university_name",
+        "course": "course",
+        "yearsemester": "year_semester",
+        "enrollmentnumber": "enrollment_number",
+    },
+    "bank": {
+        "accountholder": "account_holder_name",
+        "accountholdername": "account_holder_name",
+        "bankname": "bank_name",
+        "accountnumber": "account_number",
+        "ifsc": "ifsc_code",
+        "ifsccode": "ifsc_code",
+        "branch": "branch_name",
+        "branchname": "branch_name",
+        "aadhaarlinked": "aadhaar_linked",
+    },
+}
+
+
+def _save_payload_to_master_data(profile, payload):
+    changed_fields = set()
+    section_extra_map = {
+        "personal": "personal_extra_rows",
+        "address": "address_extra_rows",
+        "academic": "academic_extra_rows",
+        "college": "college_extra_rows",
+        "bank": "bank_extra_rows",
+    }
+
+    for section, field_map in MASTER_FIELD_MAP.items():
+        rows = payload.get(section, [])
+        if not isinstance(rows, list):
+            continue
+        extra_attr = section_extra_map.get(section)
+        existing_extras = list(getattr(profile, extra_attr, []) or [])
+        extra_keys = {_norm_label_key((r or {}).get("label", "")) for r in existing_extras}
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            value = str(item.get("value", "")).strip()
+            if not label or not value:
+                continue
+            key = _norm_label_key(label)
+            target_attr = field_map.get(key)
+            if target_attr:
+                current = getattr(profile, target_attr, "")
+                if current in {None, ""}:
+                    normalized_value = value
+                    if target_attr == "gender":
+                        low = value.lower()
+                        if low.startswith("m"):
+                            normalized_value = "M"
+                        elif low.startswith("f"):
+                            normalized_value = "F"
+                        else:
+                            normalized_value = "O"
+                    elif target_attr == "dob":
+                        try:
+                            normalized_value = date.fromisoformat(value)
+                        except ValueError:
+                            normalized_value = None
+                    if normalized_value not in {None, ""}:
+                        setattr(profile, target_attr, normalized_value)
+                        changed_fields.add(target_attr)
+                    continue
+                continue
+            if extra_attr and key and key not in extra_keys:
+                existing_extras.append({"label": label, "value": value, "is_permanent": False})
+                extra_keys.add(key)
+                setattr(profile, extra_attr, existing_extras)
+                changed_fields.add(extra_attr)
+
+    if changed_fields:
+        profile.save(update_fields=sorted(changed_fields))
+    return len(changed_fields)
+
+
+def _get_profile_draft(profile, vacancy_id):
+    store = getattr(profile, "apply_draft_data", {}) or {}
+    return store.get(str(vacancy_id), {}) if isinstance(store, dict) else {}
+
+
+def _save_profile_draft(profile, vacancy_id, payload, vac_docs, started_at):
+    store = dict(getattr(profile, "apply_draft_data", {}) or {})
+    store[str(vacancy_id)] = {
+        "draft_payload": payload if isinstance(payload, dict) else {},
+        "draft_vacancy_docs": vac_docs if isinstance(vac_docs, list) else [],
+        "started_at": started_at or "",
+        "updated_at": timezone.now().isoformat(),
+    }
+    profile.apply_draft_data = store
+    profile.save(update_fields=["apply_draft_data"])
+
+
+def _clear_profile_draft(profile, vacancy_id):
+    store = dict(getattr(profile, "apply_draft_data", {}) or {})
+    key = str(vacancy_id)
+    if key in store:
+        store.pop(key, None)
+        profile.apply_draft_data = store
+        profile.save(update_fields=["apply_draft_data"])
+
+
+def _is_pending_apply_timed_out(pending):
+    started_at = _pending_started_at(pending)
+    if not started_at:
+        return False
+    return timezone.now() > started_at + timedelta(minutes=APPLY_PENDING_TIMEOUT_MINUTES)
+
+
+def _register_apply_profile_view(profile):
+    today = timezone.localdate()
+    if profile.apply_profile_view_date != today:
+        profile.apply_profile_view_date = today
+        profile.apply_profile_view_count = 0
+    if profile.apply_profile_view_count >= APPLY_PROFILE_DAILY_VIEW_LIMIT:
+        return False, 0
+    profile.apply_profile_view_count += 1
+    profile.save(update_fields=["apply_profile_view_date", "apply_profile_view_count"])
+    return True, max(APPLY_PROFILE_DAILY_VIEW_LIMIT - profile.apply_profile_view_count, 0)
+
+
+def _is_apply_profile_unmask_active(profile):
+    until = getattr(profile, "apply_profile_unmask_until", None)
+    return bool(until and timezone.now() < until)
+
+
+def _grant_apply_profile_unmask(profile):
+    today = timezone.localdate()
+    if profile.apply_profile_unmask_date != today:
+        profile.apply_profile_unmask_date = today
+        profile.apply_profile_unmask_count = 0
+    if profile.apply_profile_unmask_count >= APPLY_PROFILE_UNMASK_DAILY_LIMIT:
+        return False, 0
+    profile.apply_profile_unmask_count += 1
+    profile.apply_profile_unmask_until = timezone.now() + timedelta(minutes=APPLY_PROFILE_UNMASK_WINDOW_MINUTES)
+    profile.save(
+        update_fields=[
+            "apply_profile_unmask_date",
+            "apply_profile_unmask_count",
+            "apply_profile_unmask_until",
+        ]
+    )
+    return True, max(APPLY_PROFILE_UNMASK_DAILY_LIMIT - profile.apply_profile_unmask_count, 0)
+
+
 def _decorate_chat_messages(messages_qs):
     decorated = list(messages_qs)
     for item in decorated:
@@ -360,6 +804,25 @@ def _decorate_chat_messages(messages_qs):
             item.attachment_kind = ""
             item.attachment_name = ""
     return decorated
+
+
+def _chat_message_payload(msg):
+    return {
+        "id": msg.id,
+        "from_admin": bool(msg.from_admin),
+        "message": msg.message or "",
+        "time": msg.created_at.strftime("%H:%M"),
+        "attachment": {
+            "url": msg.attachment.url if msg.attachment else "",
+            "name": _file_download_name(msg.attachment) if msg.attachment else "",
+            "kind": _attachment_kind(msg.attachment.name) if msg.attachment else "",
+            "download_url": reverse("chat_attachment_download", args=[msg.id]) if msg.attachment else "",
+        },
+    }
+
+
+def _is_ajax_request(request):
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 
 def _extract_payload_from_remarks(remarks_text):
@@ -483,30 +946,21 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
 
     rows = []
     merged_items = list(required_docs or [])
-    for field_name in required_profile_fields or []:
-        clean_field = str(field_name or "").strip()
-        if not clean_field:
-            continue
-        merged_items.append(f"DATA|{clean_field}")
 
     for idx, doc_name in enumerate(merged_items):
         doc_kind, clean_name = _parse_required_doc_name(doc_name)
         if not clean_name:
             continue
-        key = clean_name.lower()
-        has_data_duplicate = key in existing_master or any(
-            key in k or k in key for k in existing_master.keys()
-        )
-        if doc_kind == "Data" and has_data_duplicate:
+        # Apply page ke document section me sirf document/photo fields dikhane hain.
+        if doc_kind == "Data":
             continue
+        key = clean_name.lower()
         value = available.get(key, "")
         if not value:
             for title, url in available.items():
                 if key in title or title in key:
                     value = url
                     break
-        if doc_kind in {"Document", "Photo"} and value:
-            continue
         if not value:
             value = "Not uploaded yet"
         rows.append(
@@ -519,6 +973,7 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
                 "checkbox_name": f"vacdoc_select__{idx}",
                 "file_input_name": f"vacdoc_file__{idx}",
                 "checked": True,
+                "exists": value not in {"", "Not uploaded yet"},
             }
         )
     return rows
@@ -728,18 +1183,24 @@ def apply_student_service(request, vacancy_id):
     if request.method != "POST":
         return redirect("student_services_dashboard")
 
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
     vacancy = get_object_or_404(
         Vacancy,
         id=vacancy_id,
         is_active=True,
         category=Vacancy.CATEGORY_STUDENT,
     )
+    profile_draft = _get_profile_draft(profile, vacancy.id)
+    started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
 
     request.session["pending_form_apply"] = {
         "kind": "student",
         "vacancy_id": vacancy.id,
         "title": vacancy.title,
         "organization": vacancy.organization,
+        "started_at": started_at,
+        "draft_payload": profile_draft.get("draft_payload", {}) if isinstance(profile_draft, dict) else {},
+        "draft_vacancy_docs": profile_draft.get("draft_vacancy_docs", []) if isinstance(profile_draft, dict) else [],
     }
     return redirect("confirm_send_to_admin")
 
@@ -834,11 +1295,16 @@ def apply_vacancy(request, vacancy_id):
         is_active=True,
         category=Vacancy.CATEGORY_GOVERNMENT,
     )
+    profile_draft = _get_profile_draft(profile, vacancy.id)
+    started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
     request.session["pending_form_apply"] = {
         "kind": "government",
         "vacancy_id": vacancy.id,
         "title": vacancy.title,
         "organization": vacancy.organization,
+        "started_at": started_at,
+        "draft_payload": profile_draft.get("draft_payload", {}) if isinstance(profile_draft, dict) else {},
+        "draft_vacancy_docs": profile_draft.get("draft_vacancy_docs", []) if isinstance(profile_draft, dict) else [],
     }
     return redirect("confirm_send_to_admin")
 
@@ -850,22 +1316,53 @@ def confirm_send_to_admin(request):
     if not pending:
         messages.info(request, "Pehle koi form select karke Apply click karo.")
         return redirect("role_select")
+    now = timezone.now()
+    lock_until = getattr(profile, "apply_autofill_locked_until", None)
+    lock_active = bool(lock_until and now < lock_until)
+    timed_out_active = _is_pending_apply_timed_out(pending)
+    if timed_out_active and not lock_active:
+        profile.apply_autofill_locked_until = now + timedelta(hours=AUTOFILL_LOCK_HOURS)
+        profile.save(update_fields=["apply_autofill_locked_until"])
+        lock_until = profile.apply_autofill_locked_until
+        lock_active = True
     vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
+    profile_draft = _get_profile_draft(profile, vacancy.id)
     payment_setting = _active_payment_setting()
     payment_upi_link = _upi_deep_link(payment_setting)
+    draft_payload = pending.get("draft_payload") if isinstance(pending, dict) else {}
+    if not isinstance(draft_payload, dict):
+        draft_payload = {}
+    draft_vac_docs = pending.get("draft_vacancy_docs") if isinstance(pending, dict) else []
+    if not isinstance(draft_vac_docs, list):
+        draft_vac_docs = []
+    if not draft_payload and isinstance(profile_draft, dict):
+        prof_payload = profile_draft.get("draft_payload", {})
+        if isinstance(prof_payload, dict):
+            draft_payload = prof_payload
+    if not draft_vac_docs and isinstance(profile_draft, dict):
+        prof_docs = profile_draft.get("draft_vacancy_docs", [])
+        if isinstance(prof_docs, list):
+            draft_vac_docs = prof_docs
+    if isinstance(profile_draft, dict) and not pending.get("started_at") and profile_draft.get("started_at"):
+        pending["started_at"] = profile_draft.get("started_at")
+        request.session["pending_form_apply"] = pending
 
     if request.method == "POST":
+        submit_mode = request.POST.get("submit_mode", "skip")
         selected_steps = request.POST.getlist("steps")
         if not selected_steps:
             messages.error(request, "Kam se kam ek data step select karo.")
             return redirect("confirm_send_to_admin")
-        consent_1 = request.POST.get("consent_data_usage") == "1"
-        consent_2 = request.POST.get("consent_user_responsibility") == "1"
-        if not (consent_1 and consent_2):
-            messages.error(request, "Form send karne se pehle dono disclaimer tick karna zaroori hai.")
-            return redirect("confirm_send_to_admin")
+        if submit_mode not in {"save_only", "save_master"}:
+            consent_1 = request.POST.get("consent_data_usage") == "1"
+            consent_2 = request.POST.get("consent_user_responsibility") == "1"
+            if not (consent_1 and consent_2):
+                messages.error(request, "Form send karne se pehle dono disclaimer tick karna zaroori hai.")
+                return redirect("confirm_send_to_admin")
 
         step_data = _profile_step_data(profile)
+        if timed_out_active or lock_active:
+            step_data = _mask_step_rows(step_data)
         required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
         required_doc_rows = _build_required_doc_rows(
             profile,
@@ -873,11 +1370,17 @@ def confirm_send_to_admin(request):
             step_data=step_data,
             required_profile_fields=vacancy.required_profile_fields,
         )
+        requested_profile_rows = _build_requested_profile_rows(step_data, vacancy.required_profile_fields)
+        use_requested_only = bool(vacancy.required_profile_fields)
+
         payload = {}
         for step_key, _ in PROFILE_DATA_STEPS:
             if step_key not in selected_steps:
                 continue
-            rows = step_data.get(step_key, [])
+            if use_requested_only and step_key != "documents":
+                rows = requested_profile_rows.get(step_key, [])
+            else:
+                rows = step_data.get(step_key, [])
             out_rows = []
             for idx, row in enumerate(rows):
                 label = row[0]
@@ -892,12 +1395,39 @@ def confirm_send_to_admin(request):
         for row in required_doc_rows:
             if request.POST.get(row["checkbox_name"]) != "1":
                 continue
-            posted_value = request.POST.get(row["input_name"], row["value"] or "")
+            posted_value = request.POST.get(row["input_name"], row.get("value", "") or "").strip()
             uploaded = request.FILES.get(row["file_input_name"])
             if uploaded:
                 file_url = _save_profile_document(profile, row["label"], uploaded)
                 posted_value = file_url or posted_value or "Uploaded"
-            selected_vac_docs.append({"label": row["label"], "value": posted_value})
+            if not posted_value:
+                posted_value = row.get("value", "") or ""
+            if posted_value:
+                selected_vac_docs.append({"label": row["label"], "value": posted_value})
+        if submit_mode == "save_only":
+            pending["draft_payload"] = payload
+            pending["draft_vacancy_docs"] = selected_vac_docs
+            pending["last_edit_at"] = timezone.now().isoformat()
+            request.session["pending_form_apply"] = pending
+            _save_profile_draft(profile, vacancy.id, payload, selected_vac_docs, pending.get("started_at", ""))
+            for item in selected_vac_docs:
+                value = str(item.get("value", "")).strip()
+                if value and value != "Not uploaded yet":
+                    continue
+            messages.success(request, "Apply page data + uploaded docs save ho gaye. Ab View Profile me check kar sakte ho.")
+            return redirect("confirm_send_to_admin")
+        if submit_mode == "save_master":
+            pending["draft_payload"] = payload
+            pending["draft_vacancy_docs"] = selected_vac_docs
+            pending["last_edit_at"] = timezone.now().isoformat()
+            request.session["pending_form_apply"] = pending
+            _save_profile_draft(profile, vacancy.id, payload, selected_vac_docs, pending.get("started_at", ""))
+            saved_count = _save_payload_to_master_data(profile, payload)
+            messages.success(
+                request,
+                f"Apply data master data me save ho gaya. Updated sections: {saved_count}. Purana existing data overwrite nahi hua.",
+            )
+            return redirect("confirm_send_to_admin")
         if selected_vac_docs:
             payload["vacancy_required_documents"] = selected_vac_docs
         if not payload:
@@ -919,7 +1449,7 @@ def confirm_send_to_admin(request):
         app.remarks = (summary_line + "\n" + payload_line)[:4000]
         app.save()
 
-        submit_mode = request.POST.get("submit_mode", "skip")
+        _clear_profile_draft(profile, vacancy.id)
         request.session.pop("pending_form_apply", None)
         if pending.get("kind") == "student":
             if submit_mode == "pay":
@@ -941,6 +1471,8 @@ def confirm_send_to_admin(request):
         return redirect("dashboard")
 
     step_data = _profile_step_data(profile)
+    if timed_out_active or lock_active:
+        step_data = _mask_step_rows(step_data)
     required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
     required_doc_rows = _build_required_doc_rows(
         profile,
@@ -948,10 +1480,34 @@ def confirm_send_to_admin(request):
         step_data=step_data,
         required_profile_fields=vacancy.required_profile_fields,
     )
-    selected_default = [key for key, _ in PROFILE_DATA_STEPS]
+    if draft_vac_docs:
+        draft_doc_map = {}
+        for item in draft_vac_docs:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip().lower()
+            if not label:
+                continue
+            draft_doc_map[label] = str(item.get("value", "")).strip()
+        for row in required_doc_rows:
+            key = str(row.get("label", "")).strip().lower()
+            if key in draft_doc_map and draft_doc_map[key]:
+                row["value"] = draft_doc_map[key]
+                row["exists"] = row["value"] not in {"", "Not uploaded yet"}
+
+    requested_profile_rows = _build_requested_profile_rows(step_data, vacancy.required_profile_fields)
+    use_requested_only = bool(vacancy.required_profile_fields)
+    selected_default = []
     step_cards = []
     for key, label in PROFILE_DATA_STEPS:
-        rows = step_data.get(key, [])
+        if use_requested_only and key != "documents":
+            rows = requested_profile_rows.get(key, [])
+        else:
+            rows = step_data.get(key, [])
+        if use_requested_only and key == "documents":
+            rows = []
+        if draft_payload:
+            rows = _rows_from_payload(draft_payload, key, rows)
         row_items = []
         for idx, row in enumerate(rows):
             row_label = row[0]
@@ -973,6 +1529,8 @@ def confirm_send_to_admin(request):
                 "rows": row_items,
             }
         )
+        if row_items:
+            selected_default.append(key)
     return render(
         request,
         "portal_main/confirm_send_to_admin.html",
@@ -986,6 +1544,180 @@ def confirm_send_to_admin(request):
             "required_doc_rows": required_doc_rows,
             "payment_setting": payment_setting,
             "payment_upi_link": payment_upi_link,
+            "use_requested_only": use_requested_only,
+            "autofill_lock_active": lock_active,
+            "autofill_lock_until": lock_until,
+            "apply_timed_out": timed_out_active,
+            "apply_timeout_minutes": APPLY_PENDING_TIMEOUT_MINUTES,
+        },
+    )
+
+
+@login_required
+def apply_profile_preview(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    pending = request.session.get("pending_form_apply") or {}
+    vacancy = None
+    if pending.get("vacancy_id"):
+        vacancy = Vacancy.objects.filter(id=pending.get("vacancy_id")).first()
+    timed_out_active = _is_pending_apply_timed_out(pending)
+    now = timezone.now()
+    lock_until = getattr(profile, "apply_autofill_locked_until", None)
+    if timed_out_active and (not lock_until or now >= lock_until):
+        profile.apply_autofill_locked_until = now + timedelta(hours=AUTOFILL_LOCK_HOURS)
+        profile.save(update_fields=["apply_autofill_locked_until"])
+        lock_until = profile.apply_autofill_locked_until
+
+    if request.method == "POST" and request.POST.get("action") == "unlock_apply_profile":
+        granted, remaining = _grant_apply_profile_unmask(profile)
+        if granted:
+            messages.success(
+                request,
+                f"Apply profile full view 10 minute ke liye unlock ho gaya. Aaj remaining unlock: {remaining}.",
+            )
+        else:
+            messages.error(request, "Aaj ka 2-time full-view limit complete ho gaya.")
+        return redirect("apply_profile_preview")
+
+    allowed_view, remaining_views = _register_apply_profile_view(profile)
+    if not allowed_view:
+        messages.error(request, "Aaj ka apply profile view limit (5) complete ho gaya.")
+        return redirect("confirm_send_to_admin")
+
+    all_step_data = _profile_step_data(profile)
+
+    payload = {}
+    draft_payload = pending.get("draft_payload") if isinstance(pending, dict) else {}
+    if not isinstance(draft_payload, dict):
+        draft_payload = {}
+    if vacancy:
+        existing_app = (
+            Application.objects.filter(profile=profile, vacancy=vacancy)
+            .order_by("-updated_at", "-id")
+            .first()
+        )
+        if existing_app:
+            payload = _extract_payload_from_remarks(existing_app.remarks)
+
+    step_data = dict(all_step_data)
+    if draft_payload:
+        for key, rows in all_step_data.items():
+            if not isinstance(rows, list):
+                continue
+            step_data[key] = _rows_from_payload(draft_payload, key, rows)
+    elif payload:
+        for key, rows in all_step_data.items():
+            if not isinstance(rows, list):
+                continue
+            step_data[key] = _rows_from_payload(payload, key, rows)
+
+    required_doc_rows = []
+    if vacancy:
+        base_step_data = dict(step_data)
+        required_docs = _inject_required_docs_rows(profile, vacancy, base_step_data)
+        required_doc_rows = _build_required_doc_rows(
+            profile,
+            required_docs,
+            step_data=base_step_data,
+            required_profile_fields=vacancy.required_profile_fields,
+        )
+        draft_vac_docs = pending.get("draft_vacancy_docs") if isinstance(pending, dict) else []
+        if isinstance(draft_vac_docs, list):
+            draft_map = {}
+            for item in draft_vac_docs:
+                if not isinstance(item, dict):
+                    continue
+                label = str(item.get("label", "")).strip().lower()
+                value = str(item.get("value", "")).strip()
+                if label and value:
+                    draft_map[label] = value
+            for row in required_doc_rows:
+                rkey = str(row.get("label", "")).strip().lower()
+                if rkey in draft_map:
+                    row["value"] = draft_map[rkey]
+                    row["exists"] = row["value"] not in {"", "Not uploaded yet"}
+
+    unmask_active = _is_apply_profile_unmask_active(profile)
+    mask_for_preview = bool(timed_out_active and not unmask_active)
+    if mask_for_preview:
+        step_data = _mask_step_rows(step_data)
+
+    document_links = []
+    seen_urls = set()
+
+    def _push(title, url):
+        if not url:
+            return
+        if url in seen_urls:
+            return
+        seen_urls.add(url)
+        lower_url = url.lower()
+        kind = "image" if any(lower_url.endswith(ext) for ext in IMAGE_EXTENSIONS) else "file"
+        document_links.append(
+            {
+                "title": title,
+                "url": url,
+                "kind": kind,
+            }
+        )
+
+    def _resolve_value_url(value):
+        raw = str(value or "").strip()
+        if not raw or raw.lower() == "not uploaded yet":
+            return ""
+        if raw.startswith("/media/") or raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+        return ""
+
+    if not mask_for_preview:
+        for row in required_doc_rows:
+            url = _resolve_value_url(row.get("value"))
+            if not url:
+                continue
+            _push(row.get("label") or "Document", url)
+
+        if payload and isinstance(payload.get("vacancy_required_documents"), list):
+            for item in payload.get("vacancy_required_documents", []):
+                if not isinstance(item, dict):
+                    continue
+                label = str(item.get("label") or "Document").strip()
+                url = _resolve_value_url(item.get("value"))
+                if url:
+                    _push(label, url)
+
+        if not document_links:
+            photo_url = _safe_file_url(profile.photo)
+            sign_url = _safe_file_url(profile.signature)
+            _push("Passport Photo", photo_url)
+            _push("Signature", sign_url)
+            for doc in profile.documents.all():
+                url = _safe_file_url(doc.file)
+                if not url:
+                    continue
+                _push(doc.title or "Document", url)
+
+    return render(
+        request,
+        "portal_main/apply_profile_preview.html",
+        {
+            "profile": profile,
+            "step_data": step_data,
+            "document_links": document_links,
+            "vacancy": vacancy,
+            "apply_timed_out": timed_out_active,
+            "mask_for_preview": mask_for_preview,
+            "remaining_profile_views": remaining_views,
+            "unmask_active": unmask_active,
+            "unmask_until": profile.apply_profile_unmask_until,
+            "unmask_remaining_today": max(
+                APPLY_PROFILE_UNMASK_DAILY_LIMIT
+                - (
+                    profile.apply_profile_unmask_count
+                    if profile.apply_profile_unmask_date == timezone.localdate()
+                    else 0
+                ),
+                0,
+            ),
         },
     )
 
@@ -1065,9 +1797,11 @@ def admin_applicants(request):
     applications = _filtered_applications(query, status)
     for app in applications:
         app.document_links = _collect_document_links(app)
+    history_rows = list(ApplicationHistory.objects.all()[:120])
 
     context = {
         "applications": applications,
+        "history_rows": history_rows,
         "query": query,
         "status": status,
         "status_choices": [("all", "All")] + list(Application.STATUS_CHOICES),
@@ -1091,6 +1825,98 @@ def admin_option_control(request, category):
         {
             "category": category,
             "options": options,
+            "is_admin_user": True,
+        },
+    )
+
+
+@login_required
+def admin_master_data_control(request):
+    if not _can_access_admin(request):
+        messages.error(request, "Admin panel access allowed nahi hai.")
+        return redirect("dashboard")
+
+    try:
+        if request.method == "POST":
+            action = request.POST.get("action", "").strip()
+            if action == "add":
+                step = request.POST.get("step", "").strip()
+                field_kind = request.POST.get("field_kind", "").strip()
+                label = request.POST.get("label", "").strip()
+                try:
+                    display_order = max(int(request.POST.get("display_order", "0") or "0"), 0)
+                except ValueError:
+                    display_order = 0
+                is_active = request.POST.get("is_active") == "on"
+
+                valid_steps = {value for value, _ in MasterDataField.STEP_CHOICES}
+                valid_kinds = {value for value, _ in MasterDataField.KIND_CHOICES}
+                if step not in valid_steps or field_kind not in valid_kinds or not label:
+                    messages.error(request, "Step, type aur label required hai.")
+                    return redirect("admin_master_data_control")
+
+                duplicate = MasterDataField.objects.filter(
+                    step=step,
+                    field_kind=field_kind,
+                    label__iexact=label,
+                ).exists()
+                if duplicate:
+                    messages.warning(request, "Same label already exists is step me.")
+                    return redirect("admin_master_data_control")
+
+                MasterDataField.objects.create(
+                    step=step,
+                    field_kind=field_kind,
+                    label=label,
+                    display_order=display_order,
+                    is_active=is_active,
+                )
+                messages.success(request, "Master data row add ho gayi.")
+                return redirect("admin_master_data_control")
+
+            if action == "delete":
+                field_id = request.POST.get("field_id", "").strip()
+                field = get_object_or_404(MasterDataField, id=field_id)
+                field.delete()
+                if _is_ajax_request(request):
+                    return JsonResponse({"ok": True, "action": "delete", "field_id": int(field_id)})
+                messages.success(request, "Master data row remove ho gayi.")
+                return redirect("admin_master_data_control")
+
+            if action == "toggle":
+                field_id = request.POST.get("field_id", "").strip()
+                field = get_object_or_404(MasterDataField, id=field_id)
+                field.is_active = not field.is_active
+                field.save(update_fields=["is_active"])
+                if _is_ajax_request(request):
+                    return JsonResponse(
+                        {
+                            "ok": True,
+                            "action": "toggle",
+                            "field_id": int(field_id),
+                            "is_active": field.is_active,
+                        }
+                    )
+                messages.success(request, "Master data row status update ho gaya.")
+                return redirect("admin_master_data_control")
+
+        fields = MasterDataField.objects.all().order_by("step", "display_order", "label", "id")
+        grouped = {}
+        step_labels = dict(MasterDataField.STEP_CHOICES)
+        for field in fields:
+            grouped.setdefault(field.step, {"label": step_labels.get(field.step, field.step), "rows": []})
+            grouped[field.step]["rows"].append(field)
+    except (OperationalError, ProgrammingError):
+        messages.error(request, "MasterDataField table ready nahi hai. `manage.py migrate` run karo.")
+        grouped = {}
+
+    return render(
+        request,
+        "portal_main/admin_masterdata_control.html",
+        {
+            "grouped_fields": grouped,
+            "step_choices": MasterDataField.STEP_CHOICES,
+            "kind_choices": MasterDataField.KIND_CHOICES,
             "is_admin_user": True,
         },
     )
@@ -1301,20 +2127,27 @@ def user_chat(request):
     messages_qs = _decorate_chat_messages(profile.chat_messages.all())
 
     if request.method == "POST":
+        is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
         if not profile.chat_enabled:
+            if is_ajax:
+                return JsonResponse({"ok": False, "error": "Admin ne abhi chat enable nahi kiya hai."}, status=400)
             messages.error(request, "Admin ne abhi chat enable nahi kiya hai.")
             return redirect("user_chat")
         message_text = request.POST.get("message", "").strip()
         attachment = request.FILES.get("attachment")
         if not message_text and not attachment:
+            if is_ajax:
+                return JsonResponse({"ok": False, "error": "Message ya attachment bhejo."}, status=400)
             messages.error(request, "Message ya attachment bhejo.")
             return redirect("user_chat")
-        ChatMessage.objects.create(
+        msg = ChatMessage.objects.create(
             profile=profile,
             from_admin=False,
             message=message_text,
             attachment=attachment,
         )
+        if is_ajax:
+            return JsonResponse({"ok": True, "message": _chat_message_payload(msg)})
         messages.success(request, "Message admin ko send ho gaya.")
         return redirect("user_chat")
 
@@ -1390,22 +2223,27 @@ def admin_chat(request):
 def admin_chat_send(request):
     if request.method != "POST" or not _can_access_admin(request):
         return redirect("admin_chat")
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
     profile = get_object_or_404(UserProfile, id=request.POST.get("profile_id"))
     search = request.POST.get("q", "").strip()
     message_text = request.POST.get("message", "").strip()
     attachment = request.FILES.get("attachment")
     if not message_text and not attachment:
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": "Message ya attachment bhejo."}, status=400)
         messages.error(request, "Message ya attachment bhejo.")
         redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
         if search:
             redirect_url += f"&q={search}"
         return redirect(redirect_url)
-    ChatMessage.objects.create(
+    msg = ChatMessage.objects.create(
         profile=profile,
         from_admin=True,
         message=message_text,
         attachment=attachment,
     )
+    if is_ajax:
+        return JsonResponse({"ok": True, "message": _chat_message_payload(msg)})
     messages.success(request, "Reply send ho gayi.")
     redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
     if search:
@@ -1441,6 +2279,46 @@ def admin_chat_delete_message(request, message_id):
 
 
 @login_required
+def admin_chat_delete_selected(request):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_chat")
+    profile_id = request.POST.get("profile_id", "").strip()
+    search = request.POST.get("q", "").strip()
+    if not profile_id.isdigit():
+        return redirect("admin_chat")
+    profile = get_object_or_404(UserProfile, id=int(profile_id))
+    raw_ids = request.POST.get("selected_ids", "").strip()
+    ids = []
+    for part in raw_ids.split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    if not ids:
+        messages.warning(request, "Select chat messages first.")
+    else:
+        deleted, _ = ChatMessage.objects.filter(profile=profile, id__in=ids).delete()
+        messages.success(request, f"{deleted} selected messages delete ho gaye.")
+    redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+    if search:
+        redirect_url += f"&q={search}"
+    return redirect(redirect_url)
+
+
+@login_required
+def admin_chat_clear_thread(request, profile_id):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_chat")
+    profile = get_object_or_404(UserProfile, id=profile_id)
+    search = request.POST.get("q", "").strip()
+    ChatMessage.objects.filter(profile=profile).delete()
+    messages.success(request, "Chat thread delete ho gaya.")
+    redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+    if search:
+        redirect_url += f"&q={search}"
+    return redirect(redirect_url)
+
+
+@login_required
 def user_chat_delete_message(request, message_id):
     if request.method != "POST":
         return redirect("user_chat")
@@ -1448,6 +2326,35 @@ def user_chat_delete_message(request, message_id):
     msg = get_object_or_404(ChatMessage, id=message_id, profile=profile)
     msg.delete()
     messages.success(request, "Chat message delete ho gaya.")
+    return redirect("user_chat")
+
+
+@login_required
+def user_chat_delete_selected(request):
+    if request.method != "POST":
+        return redirect("user_chat")
+    profile = get_object_or_404(UserProfile, user=request.user)
+    raw_ids = request.POST.get("selected_ids", "").strip()
+    ids = []
+    for part in raw_ids.split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    if not ids:
+        messages.warning(request, "Select chat messages first.")
+        return redirect("user_chat")
+    deleted, _ = ChatMessage.objects.filter(profile=profile, id__in=ids).delete()
+    messages.success(request, f"{deleted} selected messages delete ho gaye.")
+    return redirect("user_chat")
+
+
+@login_required
+def user_chat_clear_thread(request):
+    if request.method != "POST":
+        return redirect("user_chat")
+    profile = get_object_or_404(UserProfile, user=request.user)
+    profile.chat_messages.all().delete()
+    messages.success(request, "Chat delete ho gaya.")
     return redirect("user_chat")
 
 
@@ -1479,6 +2386,9 @@ def admin_save_vacancy(request):
     is_active = request.POST.get("is_active") == "on"
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
     required_profile_fields = _collect_multi_values(request, "required_profile_fields", "required_profile_fields_item[]")
+    bulk_docs, bulk_fields = _parse_bulk_requirements(request.POST.get("bulk_requirements", ""))
+    required_documents = _merge_unique_casefold((required_documents or []) + bulk_docs)
+    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + bulk_fields)
 
     if category not in {Vacancy.CATEGORY_GOVERNMENT, Vacancy.CATEGORY_STUDENT}:
         messages.error(request, "Category valid nahi hai.")
@@ -1528,12 +2438,16 @@ def admin_delete_vacancy(request, vacancy_id):
     if vacancy.applications.exists():
         vacancy.is_active = False
         vacancy.save(update_fields=["is_active"])
+        if _is_ajax_request(request):
+            return JsonResponse({"ok": True, "deactivated": True, "vacancy_id": vacancy.id})
         messages.warning(request, "Is option par applications hain, isliye inactive kiya gaya.")
         if option_scope in {Vacancy.CATEGORY_GOVERNMENT, Vacancy.CATEGORY_STUDENT}:
             return redirect("admin_option_control", category=option_scope)
         return redirect("admin_applicants")
 
     vacancy.delete()
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True, "deleted": True, "vacancy_id": vacancy_id})
     messages.success(request, "Option delete ho gaya.")
     return redirect("admin_option_control", category=option_scope)
 
@@ -1556,6 +2470,9 @@ def admin_update_vacancy(request, vacancy_id):
     is_active = request.POST.get("is_active") == "on"
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
     required_profile_fields = _collect_multi_values(request, "required_profile_fields", "required_profile_fields_item[]")
+    bulk_docs, bulk_fields = _parse_bulk_requirements(request.POST.get("bulk_requirements", ""))
+    required_documents = _merge_unique_casefold((required_documents or []) + bulk_docs)
+    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + bulk_fields)
 
     if not title or not organization or not last_date:
         messages.error(request, "Edit ke liye title, organization, last date required hai.")
@@ -1600,16 +2517,45 @@ def admin_update_application(request, application_id):
     if action == "cancel":
         app.status = Application.STATUS_CANCELLED
         app.cancelled_at = timezone.now()
+        ApplicationHistory.objects.create(
+            application=app,
+            action=ApplicationHistory.ACTION_CANCEL,
+            profile_name=app.profile.full_name or "",
+            applicant_username=app.profile.user.username,
+            vacancy_title=app.vacancy.title,
+            actor_username=request.user.username,
+            note="Application cancelled by admin",
+        )
         messages.warning(request, f"Application #{app.id} cancel kar di gayi.")
     else:
         new_status = request.POST.get("status", Application.STATUS_PENDING)
         valid_values = {value for value, _ in Application.STATUS_CHOICES}
         if new_status in valid_values:
+            prev_status = app.status
             app.status = new_status
             if new_status != Application.STATUS_CANCELLED:
                 app.cancelled_at = None
+            if new_status != prev_status:
+                ApplicationHistory.objects.create(
+                    application=app,
+                    action=ApplicationHistory.ACTION_STATUS,
+                    profile_name=app.profile.full_name or "",
+                    applicant_username=app.profile.user.username,
+                    vacancy_title=app.vacancy.title,
+                    actor_username=request.user.username,
+                    note=f"Status changed: {prev_status} -> {new_status}",
+                )
             messages.success(request, f"Application #{app.id} status update ho gaya.")
     app.save(update_fields=["status", "cancelled_at", "updated_at"])
+    if _is_ajax_request(request):
+        return JsonResponse(
+            {
+                "ok": True,
+                "application_id": app.id,
+                "status": app.status,
+                "status_label": _status_label(app.status),
+            }
+        )
     return redirect("admin_applicants")
 
 
@@ -1618,8 +2564,41 @@ def admin_remove_application(request, application_id):
     if request.method != "POST" or not _can_access_admin(request):
         return redirect("admin_applicants")
     app = get_object_or_404(Application, id=application_id)
+    ApplicationHistory.objects.create(
+        application=app,
+        action=ApplicationHistory.ACTION_REMOVE,
+        profile_name=app.profile.full_name or "",
+        applicant_username=app.profile.user.username,
+        vacancy_title=app.vacancy.title,
+        actor_username=request.user.username,
+        note="Application removed by admin",
+    )
     app.delete()
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True, "application_id": application_id})
     messages.success(request, f"Application #{application_id} remove ho gayi.")
+    return redirect("admin_applicants")
+
+
+@login_required
+def admin_remove_history_entry(request, history_id):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_applicants")
+    ApplicationHistory.objects.filter(id=history_id).delete()
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True, "history_id": history_id})
+    messages.success(request, "History entry remove ho gayi.")
+    return redirect("admin_applicants")
+
+
+@login_required
+def admin_clear_history(request):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_applicants")
+    ApplicationHistory.objects.all().delete()
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True})
+    messages.success(request, "Applicants history clear ho gayi.")
     return redirect("admin_applicants")
 
 

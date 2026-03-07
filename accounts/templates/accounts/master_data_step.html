@@ -8,7 +8,15 @@
 {% block content %}
 {% if messages %}
   {% for message in messages %}
-  <div class="m-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
+  <div class="m-4 rounded-lg px-4 py-3 text-sm font-semibold
+    {% if message.tags == 'error' %}
+      border border-rose-200 bg-rose-50 text-rose-700
+    {% elif message.tags == 'warning' %}
+      border border-amber-200 bg-amber-50 text-amber-700
+    {% else %}
+      border border-emerald-200 bg-emerald-50 text-emerald-700
+    {% endif %}
+  ">{{ message }}</div>
   {% endfor %}
 {% endif %}
 
@@ -238,7 +246,6 @@
       </div>
       <a href="{% url 'role_select' %}" class="btn-secondary">Back</a>
     </div>
-
     <section class="form-card">
 
       {% if current_step == 'personal' %}
@@ -265,6 +272,9 @@
                 <tr><td>Category</td><td><select class="select" name="category"><option value="General" {% if profile.category == 'General' %}selected{% endif %}>General</option><option value="OBC" {% if profile.category == 'OBC' %}selected{% endif %}>OBC</option><option value="SC" {% if profile.category == 'SC' %}selected{% endif %}>SC</option><option value="ST" {% if profile.category == 'ST' %}selected{% endif %}>ST</option></select></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Mobile Number</td><td><input class="input" type="text" name="mobile" value="{{ profile.mobile }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Email ID</td><td><input class="input" type="email" name="email" value="{{ profile.email }}"></td><td class="action-col text-center">-</td></tr>
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="personal_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
                 {% for row in personal_extra_rows %}
                 <tr class="personal-extra-row"><td><input class="input" type="text" name="personal_extra_label[]" value="{{ row.label }}"><input type="hidden" name="personal_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="personal_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-personal-row btn-danger">Remove</button></td></tr>
                 {% endfor %}
@@ -300,6 +310,9 @@
                 <tr><td>Permanent District</td><td><input class="input" type="text" name="permanent_district" value="{{ profile.permanent_district }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Permanent Pin Code</td><td><input class="input" type="text" name="permanent_pincode" value="{{ profile.permanent_pincode }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Permanent Full Address</td><td><textarea class="textarea" name="permanent_full_address">{{ profile.permanent_full_address }}</textarea></td><td class="action-col text-center">-</td></tr>
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="address_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
                 {% for row in address_extra_rows %}
                 <tr class="address-extra-row"><td><input class="input" type="text" name="address_extra_label[]" value="{{ row.label }}"><input type="hidden" name="address_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="address_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-address-row btn-danger">Remove</button></td></tr>
                 {% endfor %}
@@ -332,6 +345,9 @@
                 <tr><td>12th Roll Number</td><td><input class="input" type="text" name="twelfth_roll_number" value="{{ profile.twelfth_roll_number }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>12th Percentage</td><td><input class="input" type="text" name="twelfth_percentage" value="{{ profile.twelfth_percentage }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Graduation</td><td><input class="input" type="text" name="graduation" value="{{ profile.graduation }}"></td><td class="action-col text-center">-</td></tr>
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="academic_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
                 {% for row in academic_extra_rows %}
                 <tr class="academic-extra-row"><td><input class="input" type="text" name="academic_extra_label[]" value="{{ row.label }}"><input type="hidden" name="academic_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="academic_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-academic-row btn-danger">Remove</button></td></tr>
                 {% endfor %}
@@ -362,6 +378,9 @@
                 <tr><td>Course</td><td><input class="input" type="text" name="course" value="{{ profile.course }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Year / Semester</td><td><input class="input" type="text" name="year_semester" value="{{ profile.year_semester }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Enrollment Number</td><td><input class="input" type="text" name="enrollment_number" value="{{ profile.enrollment_number }}"></td><td class="action-col text-center">-</td></tr>
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="college_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
                 {% for row in college_extra_rows %}
                 <tr class="college-extra-row"><td><input class="input" type="text" name="college_extra_label[]" value="{{ row.label }}"><input type="hidden" name="college_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="college_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-college-row btn-danger">Remove</button></td></tr>
                 {% endfor %}
@@ -393,6 +412,9 @@
                 <tr><td>IFSC Code</td><td><input class="input" type="text" name="ifsc_code" value="{{ profile.ifsc_code }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Branch Name</td><td><input class="input" type="text" name="branch_name" value="{{ profile.branch_name }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Aadhaar Linked</td><td><select class="select" name="aadhaar_linked"><option value="">Select</option><option value="yes" {% if profile.aadhaar_linked == 'yes' %}selected{% endif %}>Yes</option><option value="no" {% if profile.aadhaar_linked == 'no' %}selected{% endif %}>No</option></select></td><td class="action-col text-center">-</td></tr>
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="bank_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
                 {% for row in bank_extra_rows %}
                 <tr class="bank-extra-row"><td><input class="input" type="text" name="bank_extra_label[]" value="{{ row.label }}"><input type="hidden" name="bank_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="bank_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-bank-row btn-danger">Remove</button></td></tr>
                 {% endfor %}
@@ -422,7 +444,7 @@
                   <td>Passport Size Photo (Required: Yes)</td>
                   <td>
                     <input id="passport-photo-input" data-preview-target="passport-photo-preview" data-file-name-target="passport-photo-name" type="file" name="passport_photo" accept="image/*" class="input">
-                    <div class="file-meta mt-1">{% if profile.photo %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="passport-photo-name" class="file-name"></span><img id="passport-photo-preview" class="doc-preview doc-preview-large" src="{% if profile.photo %}{{ profile.photo.url }}{% endif %}" alt="photo" {% if profile.photo %}style="display:block"{% endif %}></div>
+                    <div class="file-meta mt-1">{% if passport_photo_url %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="passport-photo-name" class="file-name"></span><img id="passport-photo-preview" class="doc-preview doc-preview-large" src="{{ passport_photo_url }}" alt="photo" {% if passport_photo_url %}style="display:block"{% endif %}></div>
                   </td>
                   <td class="action-col text-center">-</td>
                 </tr>
@@ -430,16 +452,20 @@
                   <td>Signature (Required: Yes)</td>
                   <td>
                     <input id="signature-input" data-preview-target="signature-preview" data-file-name-target="signature-name" type="file" name="signature" accept="image/*" class="input">
-                    <div class="file-meta mt-1">{% if profile.signature %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="signature-name" class="file-name"></span><img id="signature-preview" class="doc-preview doc-preview-large" src="{% if profile.signature %}{{ profile.signature.url }}{% endif %}" alt="sign" {% if profile.signature %}style="display:block"{% endif %}></div>
+                    <div class="file-meta mt-1">{% if signature_url %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="signature-name" class="file-name"></span><img id="signature-preview" class="doc-preview doc-preview-large" src="{{ signature_url }}" alt="sign" {% if signature_url %}style="display:block"{% endif %}></div>
                   </td>
                   <td class="action-col text-center">-</td>
                 </tr>
-                {% for field_name, title, required in document_specs %}
+                {% for doc in document_specs %}
                 <tr>
-                  <td>{{ title }} (Required: {{ required }})</td>
+                  <td>{{ doc.title }} (Required: {{ doc.required }})</td>
                   <td>
-                    <input type="file" name="{{ field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}">
-                    <div class="file-meta mt-1">{% if title in uploaded_map %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="doc-name-{{ forloop.counter }}" class="file-name"></span><img id="doc-preview-{{ forloop.counter }}" class="doc-preview" alt="document preview"></div>
+                    <input type="file" name="{{ doc.field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}">
+                    <div class="file-meta mt-1">
+                      {% if doc.uploaded %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}
+                      <span id="doc-name-{{ forloop.counter }}" class="file-name">{% if doc.uploaded_name %}{{ doc.uploaded_name }}{% endif %}</span>
+                      <img id="doc-preview-{{ forloop.counter }}" class="doc-preview" alt="document preview" src="{{ doc.preview_url }}" {% if doc.preview_url %}style="display:block"{% endif %}>
+                    </div>
                   </td>
                   <td class="action-col text-center">-</td>
                 </tr>

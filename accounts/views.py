@@ -2,17 +2,19 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import io
 import zipfile
 
-from .models import DocumentRule, PortalNews, UserDocument, UserProfile, WalletTransaction
+from .models import DocumentRule, MasterDataField, PortalNews, UserDocument, UserProfile, WalletTransaction
 from PIL import Image, ImageOps
 
 
@@ -33,6 +35,182 @@ DOCUMENT_SPECS = [
     ("income_certificate", "Income Certificate", "If applicable"),
     ("domicile_certificate", "Domicile Certificate", "No"),
 ]
+
+STEP_EXTRA_META = {
+    "personal": ("personal_extra_label[]", "personal_extra_value[]", "personal_extra_permanent[]", "personal_extra_rows"),
+    "address": ("address_extra_label[]", "address_extra_value[]", "address_extra_permanent[]", "address_extra_rows"),
+    "academic": ("academic_extra_label[]", "academic_extra_value[]", "academic_extra_permanent[]", "academic_extra_rows"),
+    "college": ("college_extra_label[]", "college_extra_value[]", "college_extra_permanent[]", "college_extra_rows"),
+    "bank": ("bank_extra_label[]", "bank_extra_value[]", "bank_extra_permanent[]", "bank_extra_rows"),
+}
+
+MASK_AFTER_HOURS = 24
+UNMASK_WINDOW_MINUTES = 10
+UNMASK_DAILY_LIMIT = 2
+
+
+def _mask_text_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= 2:
+        return "***"
+    if len(text) <= 6:
+        return text[:1] + "***"
+    return text[:2] + "***" + text[-2:]
+
+
+def _is_master_data_masked(profile):
+    # Master data masking फिलहाल user request ke hisab se disabled hai.
+    return False
+
+
+def _mark_master_data_saved(profile):
+    profile.master_data_last_saved_at = timezone.now()
+    profile.save(update_fields=["master_data_last_saved_at"])
+
+
+def _grant_unmask_window(profile):
+    now = timezone.now()
+    today = timezone.localdate()
+    if profile.master_data_unmask_date != today:
+        profile.master_data_unmask_date = today
+        profile.master_data_unmask_count = 0
+    if profile.master_data_unmask_count >= UNMASK_DAILY_LIMIT:
+        return False, 0
+    profile.master_data_unmask_count += 1
+    profile.master_data_unmask_until = now + timedelta(minutes=UNMASK_WINDOW_MINUTES)
+    profile.save(
+        update_fields=[
+            "master_data_unmask_date",
+            "master_data_unmask_count",
+            "master_data_unmask_until",
+        ]
+    )
+    return True, max(UNMASK_DAILY_LIMIT - profile.master_data_unmask_count, 0)
+
+
+def _mask_profile_for_display(profile):
+    text_fields = [
+        "full_name", "father_name", "mother_name", "category", "mobile", "email", "aadhar", "samagra_id",
+        "present_state", "present_district", "present_city", "present_pincode", "present_address",
+        "permanent_state", "permanent_district", "permanent_pincode", "permanent_full_address", "permanent_address",
+        "district", "state", "pincode",
+        "tenth_board", "tenth_roll_number", "tenth_percentage", "tenth_result",
+        "twelfth_board", "twelfth_roll_number", "twelfth_percentage", "twelfth_result", "graduation",
+        "college_name", "university_name", "course", "year_semester", "enrollment_number",
+        "account_holder_name", "bank_name", "account_number", "ifsc_code", "branch_name",
+    ]
+    for field_name in text_fields:
+        setattr(profile, field_name, _mask_text_value(getattr(profile, field_name, "")))
+    profile.dob = None
+    for list_field in [
+        "personal_extra_rows",
+        "address_extra_rows",
+        "academic_extra_rows",
+        "college_extra_rows",
+        "bank_extra_rows",
+    ]:
+        current = getattr(profile, list_field, []) or []
+        masked_rows = []
+        for row in current:
+            masked_rows.append(
+                {
+                    "label": str((row or {}).get("label", "")).strip(),
+                    "value": _mask_text_value((row or {}).get("value", "")),
+                    "is_permanent": bool((row or {}).get("is_permanent")),
+                }
+            )
+        setattr(profile, list_field, masked_rows)
+
+
+def _reject_if_masked_post(request, profile):
+    return False
+
+
+def _norm_label(value):
+    return str(value or "").strip().lower()
+
+
+def _active_master_fields(step_key, field_kind):
+    return list(
+        MasterDataField.objects.filter(
+            step=step_key,
+            field_kind=field_kind,
+            is_active=True,
+        ).order_by("display_order", "label", "id")
+    )
+
+
+def _step_extra_values_map(profile_rows):
+    out = {}
+    for row in profile_rows or []:
+        label = str((row or {}).get("label", "")).strip()
+        if not label:
+            continue
+        out[_norm_label(label)] = str((row or {}).get("value", "")).strip()
+    return out
+
+
+def _merge_admin_and_custom_rows(request, step_key, profile):
+    meta = STEP_EXTRA_META.get(step_key)
+    if not meta:
+        return []
+    label_key, value_key, permanent_key, profile_attr = meta
+    admin_fields = _active_master_fields(step_key, MasterDataField.KIND_TEXT)
+    admin_labels = {_norm_label(field.label) for field in admin_fields}
+
+    merged = []
+    for field in admin_fields:
+        merged.append(
+            {
+                "label": field.label,
+                "value": request.POST.get(f"{step_key}_admin_value__{field.id}", "").strip(),
+                "is_permanent": True,
+            }
+        )
+
+    extra_labels = request.POST.getlist(label_key)
+    extra_values = request.POST.getlist(value_key)
+    extra_permanent = request.POST.getlist(permanent_key)
+    custom_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+    for row in custom_rows:
+        key = _norm_label((row or {}).get("label", ""))
+        if key and key in admin_labels:
+            continue
+        merged.append(row)
+
+    # Keep old permanent rows when admin field is currently removed/inactive.
+    existing_rows = getattr(profile, profile_attr, []) or []
+    merged_keys = {_norm_label((r or {}).get("label", "")) for r in merged}
+    for row in existing_rows:
+        key = _norm_label((row or {}).get("label", ""))
+        if not key:
+            continue
+        if not (row or {}).get("is_permanent"):
+            continue
+        if key in merged_keys:
+            continue
+        merged.append(
+            {
+                "label": str((row or {}).get("label", "")).strip(),
+                "value": str((row or {}).get("value", "")).strip(),
+                "is_permanent": True,
+            }
+        )
+    return merged
+
+
+def _document_specs_for_profile(profile):
+    specs = [{"field_name": field_name, "title": title, "required": required} for field_name, title, required in DOCUMENT_SPECS]
+    seen = {_norm_label(title) for _, title, _ in DOCUMENT_SPECS}
+    for field in _active_master_fields(MasterDataField.STEP_DOCUMENTS, MasterDataField.KIND_DOCUMENT):
+        key = _norm_label(field.label)
+        if not key or key in seen:
+            continue
+        specs.append({"field_name": f"admin_document_{field.id}", "title": field.label, "required": "Admin"})
+        seen.add(key)
+    return specs
 
 
 def _normalize_doc_name(value):
@@ -98,6 +276,35 @@ def _step_context(profile, current_step_key):
     current_index = step_keys.index(current_step_key)
     prev_url_name = STEPS[current_index - 1][2] if current_index > 0 else None
     next_url_name = STEPS[current_index + 1][2] if current_index < len(STEPS) - 1 else None
+    extra_maps = {
+        "personal": _step_extra_values_map(profile.personal_extra_rows),
+        "address": _step_extra_values_map(profile.address_extra_rows),
+        "academic": _step_extra_values_map(profile.academic_extra_rows),
+        "college": _step_extra_values_map(profile.college_extra_rows),
+        "bank": _step_extra_values_map(profile.bank_extra_rows),
+    }
+    admin_text_fields = []
+    if current_step_key in extra_maps:
+        for field in _active_master_fields(current_step_key, MasterDataField.KIND_TEXT):
+            admin_text_fields.append(
+                {
+                    "id": field.id,
+                    "label": field.label,
+                    "value": extra_maps[current_step_key].get(_norm_label(field.label), ""),
+                }
+            )
+    masking_active = _is_master_data_masked(profile)
+    if masking_active:
+        _mask_profile_for_display(profile)
+        for item in admin_text_fields:
+            item["value"] = _mask_text_value(item.get("value"))
+    now = timezone.now()
+    reveal_until = getattr(profile, "master_data_unmask_until", None)
+    reveal_active = bool(reveal_until and now < reveal_until)
+    today = timezone.localdate()
+    used_today = profile.master_data_unmask_count if profile.master_data_unmask_date == today else 0
+    unmask_remaining_today = max(UNMASK_DAILY_LIMIT - used_today, 0)
+
     return {
         "profile": profile,
         "current_step": current_step_key,
@@ -120,6 +327,11 @@ def _step_context(profile, current_step_key):
         "academic_extra_rows": profile.academic_extra_rows or [],
         "college_extra_rows": profile.college_extra_rows or [],
         "bank_extra_rows": profile.bank_extra_rows or [],
+        "admin_text_fields": admin_text_fields,
+        "masking_active": masking_active,
+        "reveal_active": reveal_active,
+        "reveal_until": reveal_until,
+        "unmask_remaining_today": unmask_remaining_today,
     }
 
 
@@ -163,6 +375,41 @@ def _build_extra_rows(labels, values, permanents=None):
             continue
         output.append({"label": label, "value": value, "is_permanent": is_permanent})
     return output
+
+
+def _safe_media_url(file_field):
+    if not file_field:
+        return ""
+    name = getattr(file_field, "name", "") or ""
+    if not name:
+        return ""
+    try:
+        if not default_storage.exists(name):
+            return ""
+        return file_field.url
+    except Exception:
+        return ""
+
+
+def _profile_image_url(profile, title, profile_field):
+    direct = _safe_media_url(profile_field)
+    if direct:
+        return direct
+    doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
+    if not doc:
+        return ""
+    return _safe_media_url(doc.file)
+
+
+def _document_file_info(profile, title):
+    doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
+    if not doc:
+        return {"uploaded": False, "url": "", "name": ""}
+    url = _safe_media_url(doc.file)
+    if not url:
+        return {"uploaded": False, "url": "", "name": ""}
+    name = (doc.file.name or "").split("/")[-1]
+    return {"uploaded": True, "url": url, "name": name}
 
 
 def login_view(request):
@@ -254,64 +501,6 @@ def master_data_option_view(request):
         action = request.POST.get("action")
         if action == "create":
             return redirect("master_data_personal")
-        if action == "demo":
-            profile.full_name = profile.full_name or "Rajesh Kumar"
-            profile.father_name = "Mahesh Kumar"
-            profile.mother_name = "Suman Devi"
-            profile.dob = date(2000, 3, 15)
-            profile.gender = "M"
-            profile.category = "OBC"
-            profile.mobile = "9876543210"
-            profile.email = "rajesh.kumar@example.com"
-            profile.aadhar = "1234-5678-9012"
-            profile.samagra_id = "SGR00012345"
-
-            profile.present_state = "Chhattisgarh"
-            profile.present_district = "Raipur"
-            profile.present_city = "Raipur"
-            profile.present_pincode = "492001"
-            profile.present_address = "Ward 12, Shanti Nagar, Raipur"
-            profile.permanent_state = "Chhattisgarh"
-            profile.permanent_district = "Raipur"
-            profile.permanent_pincode = "492001"
-            profile.permanent_full_address = "Ward 12, Shanti Nagar, Raipur"
-            profile.state = "Chhattisgarh"
-            profile.district = "Raipur"
-            profile.pincode = "492001"
-            profile.permanent_address = profile.permanent_full_address
-
-            profile.tenth_board = "CGBSE"
-            profile.tenth_roll_number = "CGBSE10-22441"
-            profile.tenth_percentage = "82.4"
-            profile.tenth_result = "82.4"
-            profile.twelfth_board = "CGBSE"
-            profile.twelfth_roll_number = "CGBSE12-77882"
-            profile.twelfth_percentage = "79.6"
-            profile.twelfth_result = "79.6"
-            profile.graduation = "B.Sc. Final Year"
-
-            profile.college_name = "Govt Science College Raipur"
-            profile.university_name = "Pt. Ravishankar Shukla University"
-            profile.course = "B.Sc."
-            profile.year_semester = "Final Year"
-            profile.enrollment_number = "PRSU-2022-001245"
-            profile.university = profile.university_name
-
-            profile.account_holder_name = "Rajesh Kumar"
-            profile.bank_name = "State Bank of India"
-            profile.account_number = "112233445566"
-            profile.ifsc_code = "SBIN0001234"
-            profile.branch_name = "Raipur Main"
-            profile.aadhaar_linked = "yes"
-
-            profile.personal_extra_rows = [{"label": "Nationality", "value": "Indian"}]
-            profile.address_extra_rows = [{"label": "Landmark", "value": "Near City Post Office"}]
-            profile.academic_extra_rows = [{"label": "Current Backlogs", "value": "0"}]
-            profile.college_extra_rows = [{"label": "Section", "value": "A"}]
-            profile.bank_extra_rows = [{"label": "Account Type", "value": "Savings"}]
-            profile.save()
-            messages.success(request, "Demo master data auto-fill ho gaya.")
-            return redirect("role_select")
         return redirect("role_select")
     return render(
         request,
@@ -773,6 +962,8 @@ def master_data_view(request):
 def master_data_personal_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
         p = request.POST
         profile.full_name = p.get("full_name", "")
         profile.father_name = p.get("father_name", "")
@@ -784,11 +975,9 @@ def master_data_personal_view(request):
         profile.email = p.get("email", "")
         profile.aadhar = p.get("aadhar", "")
         profile.samagra_id = p.get("samagra_id", "")
-        extra_labels = p.getlist("personal_extra_label[]")
-        extra_values = p.getlist("personal_extra_value[]")
-        extra_permanent = p.getlist("personal_extra_permanent[]")
-        profile.personal_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+        profile.personal_extra_rows = _merge_admin_and_custom_rows(request, "personal", profile)
         profile.save()
+        _mark_master_data_saved(profile)
         return redirect("master_data_address")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "personal"))
 
@@ -797,6 +986,8 @@ def master_data_personal_view(request):
 def master_data_address_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
         p = request.POST
         profile.present_state = p.get("present_state", "")
         profile.present_district = p.get("present_district", "")
@@ -821,11 +1012,9 @@ def master_data_address_view(request):
         profile.district = profile.present_district
         profile.pincode = profile.present_pincode
         profile.permanent_address = profile.permanent_full_address or profile.present_address
-        extra_labels = p.getlist("address_extra_label[]")
-        extra_values = p.getlist("address_extra_value[]")
-        extra_permanent = p.getlist("address_extra_permanent[]")
-        profile.address_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+        profile.address_extra_rows = _merge_admin_and_custom_rows(request, "address", profile)
         profile.save()
+        _mark_master_data_saved(profile)
         return redirect("master_data_academic")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "address"))
 
@@ -834,6 +1023,8 @@ def master_data_address_view(request):
 def master_data_academic_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
         p = request.POST
         profile.tenth_board = p.get("tenth_board", "")
         profile.tenth_roll_number = p.get("tenth_roll_number", "")
@@ -844,11 +1035,9 @@ def master_data_academic_view(request):
         profile.twelfth_percentage = p.get("twelfth_percentage", "")
         profile.twelfth_result = profile.twelfth_percentage
         profile.graduation = p.get("graduation", "")
-        extra_labels = p.getlist("academic_extra_label[]")
-        extra_values = p.getlist("academic_extra_value[]")
-        extra_permanent = p.getlist("academic_extra_permanent[]")
-        profile.academic_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+        profile.academic_extra_rows = _merge_admin_and_custom_rows(request, "academic", profile)
         profile.save()
+        _mark_master_data_saved(profile)
         return redirect("master_data_college")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "academic"))
 
@@ -857,6 +1046,8 @@ def master_data_academic_view(request):
 def master_data_college_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
         p = request.POST
         profile.college_name = p.get("college_name", "")
         profile.university_name = p.get("university_name", "")
@@ -864,11 +1055,9 @@ def master_data_college_view(request):
         profile.year_semester = p.get("year_semester", "")
         profile.enrollment_number = p.get("enrollment_number", "")
         profile.university = profile.university_name
-        extra_labels = p.getlist("college_extra_label[]")
-        extra_values = p.getlist("college_extra_value[]")
-        extra_permanent = p.getlist("college_extra_permanent[]")
-        profile.college_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+        profile.college_extra_rows = _merge_admin_and_custom_rows(request, "college", profile)
         profile.save()
+        _mark_master_data_saved(profile)
         return redirect("master_data_bank")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "college"))
 
@@ -877,6 +1066,8 @@ def master_data_college_view(request):
 def master_data_bank_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
         p = request.POST
         profile.account_holder_name = p.get("account_holder_name", "")
         profile.bank_name = p.get("bank_name", "")
@@ -884,11 +1075,9 @@ def master_data_bank_view(request):
         profile.ifsc_code = p.get("ifsc_code", "")
         profile.branch_name = p.get("branch_name", "")
         profile.aadhaar_linked = p.get("aadhaar_linked", "")
-        extra_labels = p.getlist("bank_extra_label[]")
-        extra_values = p.getlist("bank_extra_value[]")
-        extra_permanent = p.getlist("bank_extra_permanent[]")
-        profile.bank_extra_rows = _build_extra_rows(extra_labels, extra_values, extra_permanent)
+        profile.bank_extra_rows = _merge_admin_and_custom_rows(request, "bank", profile)
         profile.save()
+        _mark_master_data_saved(profile)
         return redirect("master_data_documents")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "bank"))
 
@@ -897,19 +1086,34 @@ def master_data_bank_view(request):
 def master_data_documents_view(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     rule_map = {_normalize_doc_name(r.name): r for r in DocumentRule.objects.filter(is_active=True)}
+    document_specs = _document_specs_for_profile(profile)
     if request.method == "POST":
+        if request.POST.get("action") == "reveal_10min":
+            granted, remaining = _grant_unmask_window(profile)
+            if granted:
+                messages.success(
+                    request,
+                    f"Full data view 10 minute ke liye unlock ho gaya. Aaj ke remaining unlock: {remaining}.",
+                )
+            else:
+                messages.error(request, "Aaj ka 2-time view limit complete ho gaya.")
+            return redirect("master_data_personal")
         errors = []
         photo = request.FILES.get("passport_photo")
         signature = request.FILES.get("signature")
+        # Passport photo/signature profile core fields hain:
+        # inhe hard-block na karein, warna user ko lagta hai save nahi hua.
         if photo:
             err = _validate_file_rule("Passport Size Photo", photo, rule_map)
             if err:
-                errors.append(err)
+                messages.warning(request, f"Photo rule warning: {err} (photo save continue hoga)")
         if signature:
             err = _validate_file_rule("Signature", signature, rule_map)
             if err:
-                errors.append(err)
-        for field_name, title, _ in DOCUMENT_SPECS:
+                messages.warning(request, f"Signature rule warning: {err} (signature save continue hoga)")
+        for spec in document_specs:
+            field_name = spec["field_name"]
+            title = spec["title"]
             file_obj = request.FILES.get(field_name)
             if not file_obj:
                 continue
@@ -937,34 +1141,76 @@ def master_data_documents_view(request):
         if signature:
             profile.signature = signature
         profile.save()
+        # Keep mirrored photo/signature entries in UserDocument so preview areas
+        # that read documents also always show latest uploaded image.
+        if photo:
+            photo_doc = profile.documents.filter(title__iexact="Passport Photo").first()
+            if photo_doc:
+                photo_doc.file = photo
+                photo_doc.save()
+            else:
+                UserDocument.objects.create(profile=profile, title="Passport Photo", file=photo)
+        if signature:
+            sign_doc = profile.documents.filter(title__iexact="Signature").first()
+            if sign_doc:
+                sign_doc.file = signature
+                sign_doc.save()
+            else:
+                UserDocument.objects.create(profile=profile, title="Signature", file=signature)
 
-        for field_name, title, _ in DOCUMENT_SPECS:
+        saved_count = 0
+        for spec in document_specs:
+            field_name = spec["field_name"]
+            title = spec["title"]
             file_obj = request.FILES.get(field_name)
             if not file_obj:
                 continue
-            existing = profile.documents.filter(title=title).first()
+            existing = profile.documents.filter(title__iexact=title).first()
             if existing:
                 existing.file = file_obj
                 existing.save()
             else:
                 UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+            saved_count += 1
 
         for idx, file_obj in enumerate(extra_files):
             title = "Additional Document"
             if idx < len(extra_titles) and extra_titles[idx].strip():
                 title = extra_titles[idx].strip()
-            existing = profile.documents.filter(title=title).first()
+            existing = profile.documents.filter(title__iexact=title).first()
             if existing:
                 existing.file = file_obj
                 existing.save()
             else:
                 UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+            saved_count += 1
 
-        messages.success(request, "Master Data complete ho gaya.")
+        photo_saved = "Yes" if photo else "No"
+        sign_saved = "Yes" if signature else "No"
+        _mark_master_data_saved(profile)
+        messages.success(
+            request,
+            f"Master Data save ho gaya. Photo updated: {photo_saved}, Signature updated: {sign_saved}, Other docs: {saved_count}.",
+        )
         return redirect("role_select")
 
     uploaded_map = {doc.title: doc for doc in profile.documents.all()}
     ctx = _step_context(profile, "documents")
-    ctx["document_specs"] = DOCUMENT_SPECS
+    rendered_specs = []
+    for spec in document_specs:
+        info = _document_file_info(profile, spec["title"])
+        rendered_specs.append(
+            {
+                "field_name": spec["field_name"],
+                "title": spec["title"],
+                "required": spec["required"],
+                "uploaded": info["uploaded"],
+                "preview_url": info["url"],
+                "uploaded_name": info["name"],
+            }
+        )
+    ctx["document_specs"] = rendered_specs
     ctx["uploaded_map"] = uploaded_map
+    ctx["passport_photo_url"] = _profile_image_url(profile, "Passport Photo", profile.photo)
+    ctx["signature_url"] = _profile_image_url(profile, "Signature", profile.signature)
     return render(request, "accounts/master_data_step.html", ctx)

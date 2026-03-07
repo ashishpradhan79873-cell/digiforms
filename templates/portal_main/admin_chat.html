@@ -1,134 +1,148 @@
 {% extends 'base.html' %}
 
 {% block title %}Admin Chat{% endblock %}
-{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
-{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block body_class %}min-h-screen bg-[#edf1f7] text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1280px] mx-auto p-3 md:p-5{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
 <style>
-  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
-  .layout.compact { grid-template-columns:86px 1fr; }
-  .side { background:#fff; border-right:1px solid #dbe3ee; }
-  .layout.compact .side { padding-left:8px; padding-right:8px; }
-  .layout.compact .side .menu-label,
-  .layout.compact .side .brand-sub { display:none; }
-  .layout.compact .side .menu-link { justify-content:center; }
-  .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
-  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
-  .menu-link.active { background:#dcecff; color:#0c4a9a; }
-  .panel { padding:16px; min-width:0; }
-  .card { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
-  .bubble { border-radius:12px; padding:10px 12px; border:1px solid #dbe3ef; max-width:80%; }
-  .bubble-user { background:#eff6ff; border-color:#bfdbfe; }
-  .bubble-admin { background:#f8fafc; margin-left:auto; }
-  .thread-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
-  .thread-item { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#f8fafc; text-decoration:none; color:inherit; }
-  .thread-item.active { border-color:#0b63ce; background:#eff6ff; }
-  .att-image { margin-top:8px; width:240px; max-width:100%; border-radius:10px; border:1px solid #dbe3ef; display:block; }
-  .att-box { margin-top:8px; border:1px solid #dbe3ef; background:#f8fafc; border-radius:10px; padding:8px 10px; }
-  .msg-line { font-size:12px; color:#64748b; margin-top:4px; }
-  .msg-tools { position:relative; }
-  .menu-btn { border:1px solid #cbd5e1; background:#fff; border-radius:8px; width:30px; height:26px; font-weight:900; color:#334155; }
-  .msg-menu { position:absolute; right:0; top:30px; min-width:130px; background:#fff; border:1px solid #dbe3ef; border-radius:10px; box-shadow:0 10px 24px rgba(15,23,42,.12); padding:6px; display:none; z-index:20; }
+  .admin-chat-shell { display:grid; grid-template-columns:320px 1fr; gap:14px; min-height:calc(100vh - 40px); }
+  .panel { background:#fff; border:1px solid #d8dfeb; border-radius:18px; box-shadow:0 14px 30px rgba(15,23,42,.08); }
+
+  .left-head { padding:12px; border-bottom:1px solid #e2e8f0; }
+  .thread-list { max-height:calc(100vh - 230px); overflow:auto; padding:10px; }
+  .thread-item { display:block; border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#f8fafc; text-decoration:none; color:inherit; margin-bottom:8px; }
+  .thread-item.active { border-color:#2a82e6; background:#eff6ff; }
+
+  .chat-wrap { display:flex; flex-direction:column; height:calc(100vh - 70px); overflow:hidden; }
+  .chat-header { background:#fff; border-bottom:1px solid #d7dfeb; padding:12px; border-top-left-radius:18px; border-top-right-radius:18px; }
+  .chat-body { flex:1; min-height:0; overflow-y:auto; padding:14px 12px 110px; background:#edf1f7; }
+  .chat-input-wrap { position:sticky; bottom:0; padding:10px 12px 14px; background:linear-gradient(180deg, rgba(237,241,247,0), #edf1f7 40%); border-bottom-left-radius:18px; border-bottom-right-radius:18px; }
+  .chat-input-inner { display:flex; align-items:center; gap:10px; border:1px solid #d2dbe8; background:#fff; border-radius:999px; padding:8px; box-shadow:0 8px 20px rgba(15,23,42,.08); }
+
+  .bubble { border-radius:28px; padding:14px 16px; border:1px solid #d7dfeb; max-width:82%; box-shadow:0 12px 28px rgba(15,23,42,.08); }
+  .bubble-user { background:#f9fbff; color:#0f172a; }
+  .bubble-admin { background:#ffffff; border-color:#d7dfeb; margin-left:auto; color:#0f172a; }
+  .att-image { margin-top:8px; width:220px; max-width:100%; border-radius:12px; border:1px solid #d3ddeb; display:block; }
+  .att-box { margin-top:8px; border:1px dashed #bfd0e6; background:#f3f7fd; border-radius:12px; padding:10px 12px; }
+  .msg-line { font-size:12px; color:#8aa0bd; margin-top:6px; text-align:right; }
+
+  .menu-wrap { position:relative; }
+  .menu-btn { border:1px solid #c8d4e5; background:#fff; border-radius:10px; width:30px; height:26px; font-weight:900; color:#41536f; }
+  .msg-menu { position:absolute; right:0; top:32px; min-width:132px; background:#fff; border:1px solid #dbe3ef; border-radius:10px; box-shadow:0 10px 24px rgba(15,23,42,.12); padding:6px; display:none; z-index:20; }
   .msg-menu.open { display:block; }
   .menu-delete { width:100%; text-align:left; border:0; background:#fff1f2; color:#be123c; border-radius:8px; padding:7px 9px; font-size:12px; font-weight:800; }
-  #chatThread { max-height:58vh; overflow-y:auto; padding-right:4px; }
-  @media (max-width: 1100px){ .layout, .layout.compact { grid-template-columns:1fr; } .panel { padding:12px; } }
+  .menu-select { width:100%; text-align:left; border:0; background:#eff6ff; color:#1d4ed8; border-radius:8px; padding:7px 9px; font-size:12px; font-weight:800; margin-bottom:4px; }
+
+  .send-btn { border-radius:999px; width:46px; height:46px; border:none; background:#2a82e6; color:#fff; display:grid; place-items:center; font-size:20px; font-weight:900; }
+  .attach-btn { border-radius:999px; width:42px; height:42px; border:none; background:#e7edf6; color:#51647f; font-size:22px; line-height:1; }
+  .msg-input { flex:1; background:transparent; border:none; color:#0f172a; font-size:16px; outline:none; }
+  .hidden-file { display:none; }
+  .meta-pill { display:inline-flex; border-radius:999px; background:#f7f9fd; color:#8ea0b9; border:1px solid #dbe3ef; font-size:12px; font-weight:800; padding:4px 12px; }
+  .select-box { display:none; width:16px; height:16px; accent-color:#2563eb; }
+  .chat-wrap.select-mode .select-box { display:inline-block; }
+
+  @media (max-width: 980px) {
+    .admin-chat-shell { grid-template-columns:1fr; }
+    .thread-list { max-height:240px; }
+    .chat-wrap { height:calc(100vh - 360px); }
+  }
 </style>
 
-<div id="adminLayout" class="layout">
-  <aside class="side p-4">
-    <div class="px-3 py-2 border-b border-slate-200">
-      <div class="text-2xl font-black">Digi Form</div>
-      <div class="text-sm text-slate-500 brand-sub">Chat Management</div>
-      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+{% if messages %}
+  <div class="mb-3 space-y-2">
+    {% for message in messages %}
+      <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">{{ message }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="admin-chat-shell">
+  <aside class="panel">
+    <div class="left-head">
+      <div class="flex items-center justify-between gap-2">
+        <h1 class="text-xl font-black">Admin Chat</h1>
+        <a href="{% url 'admin_applicants' %}" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Back</a>
+      </div>
+      <form method="get" class="mt-3 flex gap-2">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search name / mobile / ID" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        {% if selected_profile %}<input type="hidden" name="profile_id" value="{{ selected_profile.id }}">{% endif %}
+        <button type="submit" class="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white">Go</button>
+      </form>
     </div>
-    <nav class="mt-4 space-y-2">
-      <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
-      <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
-      <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
-      <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
-      <a class="menu-link active" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
-      <a class="menu-link" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
-      <a class="menu-link" href="{% url 'admin_payment' %}"><span class="material-symbols-outlined">payments</span><span class="menu-label">Payment</span></a>
-      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
-    </nav>
+    <div class="thread-list">
+      {% for item in thread_items %}
+        <a href="{% url 'admin_chat' %}?profile_id={{ item.profile.id }}{% if query %}&q={{ query }}{% endif %}" class="thread-item {% if selected_profile and item.profile.id == selected_profile.id %}active{% endif %}">
+          <div class="font-bold text-sm">#{{ item.profile.id }} - {{ item.profile.full_name|default:item.profile.user.username }}</div>
+          <div class="text-xs text-slate-500 mt-1">Messages: {{ item.message_count }}</div>
+          {% if item.last_message %}
+          <div class="text-xs text-slate-600 mt-1">{{ item.last_message.created_at|date:"d M, H:i" }}</div>
+          {% endif %}
+        </a>
+      {% empty %}
+        <div class="text-sm text-slate-500">No applicants found.</div>
+      {% endfor %}
+    </div>
   </aside>
 
-  <main class="panel space-y-4">
-    {% if messages %}
-      {% for message in messages %}
-        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{{ message }}</div>
-      {% endfor %}
-    {% endif %}
-
-    <section class="card p-4">
-      <h1 class="text-3xl font-black">Applicant Chat</h1>
-      <form method="get" class="mt-3 flex flex-wrap gap-2">
-        <input type="text" name="q" value="{{ query }}" placeholder="Search name / username / mobile / ID" class="rounded-lg border border-slate-300 px-3 py-2 text-sm min-w-[280px]">
-        {% if selected_profile %}<input type="hidden" name="profile_id" value="{{ selected_profile.id }}">{% endif %}
-        <button type="submit" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Search</button>
-        <a href="{% url 'admin_chat' %}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Reset</a>
-      </form>
-      <div class="mt-3 thread-grid">
-        {% for item in thread_items %}
-          <a href="{% url 'admin_chat' %}?profile_id={{ item.profile.id }}" class="thread-item {% if selected_profile and item.profile.id == selected_profile.id %}active{% endif %}">
-            <div class="font-bold text-sm">#{{ item.profile.id }} - {{ item.profile.full_name|default:item.profile.user.username }}</div>
-            <div class="text-xs text-slate-500 mt-1">Messages: {{ item.message_count }}</div>
-            {% if item.last_message %}
-              <div class="text-xs text-slate-600 mt-1">
-                {{ item.last_message.created_at|date:"Y-m-d H:i" }} | {% if item.last_message.from_admin %}Admin{% else %}User{% endif %}
-              </div>
-            {% endif %}
-          </a>
-        {% empty %}
-          <div class="text-sm text-slate-500">No applicants found.</div>
-        {% endfor %}
-      </div>
-      {% if selected_profile %}
-      <div class="mt-3 flex flex-wrap gap-2 items-center">
-        <div class="text-sm text-slate-600">Current: <span class="font-bold">#{{ selected_profile.id }} - {{ selected_profile.full_name|default:selected_profile.user.username }}</span></div>
-        <form method="post" action="{% url 'admin_chat_toggle' selected_profile.id %}">
-          {% csrf_token %}
-          <button type="submit" class="rounded-lg px-3 py-2 text-xs font-bold {% if selected_profile.chat_enabled %}bg-amber-600 text-white{% else %}bg-emerald-700 text-white{% endif %}">
-            {% if selected_profile.chat_enabled %}Disable Chat{% else %}Enable Chat{% endif %}
-          </button>
-        </form>
-      </div>
-      {% endif %}
-    </section>
-
-    <section class="card p-4">
-      <h2 class="text-xl font-black">Messages</h2>
-      <div id="chatThread" class="mt-4 space-y-3">
-        {% for msg in chat_messages %}
-        <div class="bubble {% if msg.from_admin %}bubble-admin{% else %}bubble-user{% endif %}">
-          <div class="flex items-center justify-between gap-2">
-            <div class="font-semibold text-sm">{% if msg.from_admin %}Admin{% else %}User{% endif %}</div>
-            <div class="msg-tools">
-              <button type="button" class="menu-btn msg-menu-toggle" aria-label="Message options">...</button>
-              <div class="msg-menu">
-                <form method="post" action="{% url 'admin_chat_delete_message' msg.id %}">
-                  {% csrf_token %}
-                  <input type="hidden" name="q" value="{{ query }}">
-                  <button type="submit" class="menu-delete">Delete Chat</button>
-                </form>
-              </div>
+  <section class="panel chat-wrap">
+    {% if selected_profile %}
+    <header class="chat-header">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-black">{{ selected_profile.full_name|default:selected_profile.user.username }}</h2>
+          <p class="text-xs text-slate-500">Applicant ID: #{{ selected_profile.id }}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <form method="post" action="{% url 'admin_chat_toggle' selected_profile.id %}">
+            {% csrf_token %}
+            <button type="submit" class="rounded-lg px-3 py-2 text-xs font-bold {% if selected_profile.chat_enabled %}bg-amber-600 text-white{% else %}bg-emerald-700 text-white{% endif %}">
+              {% if selected_profile.chat_enabled %}Disable{% else %}Enable{% endif %}
+            </button>
+          </form>
+          <a href="{% url 'admin_chat' %}" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Reset</a>
+          <div class="menu-wrap">
+            <button type="button" class="menu-btn header-menu-toggle">⋮</button>
+            <div class="msg-menu">
+              <button type="button" class="menu-select" id="adminSelectModeBtn">Select Chat</button>
+              <form method="post" action="{% url 'admin_chat_delete_selected' %}" id="adminDeleteSelectedForm">
+                {% csrf_token %}
+                <input type="hidden" name="q" value="{{ query }}">
+                <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+                <input type="hidden" name="selected_ids" id="adminSelectedIdsInput">
+                <button type="submit" class="menu-delete">Delete Selected</button>
+              </form>
+              <form method="post" action="{% url 'admin_chat_clear_thread' selected_profile.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="q" value="{{ query }}">
+                <button type="submit" class="menu-delete">Delete Chat</button>
+              </form>
             </div>
           </div>
-          {% if msg.message %}
-            <div class="mt-1 text-sm">{{ msg.message|linebreaksbr }}</div>
-          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <div class="chat-body" id="chatThread">
+      <div class="text-center mb-3"><span class="meta-pill">TODAY</span></div>
+      <div class="space-y-3">
+        {% for msg in chat_messages %}
+        <div class="bubble {% if msg.from_admin %}bubble-admin{% else %}bubble-user{% endif %}" data-message-row data-message-id="{{ msg.id }}">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold text-sm">{% if msg.from_admin %}Admin{% else %}User{% endif %}</div>
+            <input type="checkbox" class="select-box message-select-box">
+          </div>
+
+          {% if msg.message %}<div class="mt-1 text-sm">{{ msg.message|linebreaksbr }}</div>{% endif %}
+
           {% if msg.attachment %}
             <div class="mt-2">
               {% if msg.attachment_kind == "image" %}
-                <a href="{% url 'chat_attachment_download' msg.id %}" download>
-                  <img src="{{ msg.attachment.url }}" alt="{{ msg.attachment_name }}" class="att-image">
-                </a>
+                <img src="{{ msg.attachment.url }}" alt="{{ msg.attachment_name }}" class="att-image">
               {% elif msg.attachment_kind == "pdf" %}
                 <div class="att-box">
-                  <div class="text-xs font-semibold text-slate-600">PDF</div>
+                  <div class="text-xs font-semibold text-rose-500">PDF DOCUMENT</div>
                   <div class="text-sm font-bold text-slate-900">{{ msg.attachment_name }}</div>
                 </div>
               {% else %}
@@ -137,67 +151,129 @@
                   <div class="text-sm font-bold text-slate-900">{{ msg.attachment_name }}</div>
                 </div>
               {% endif %}
-              <a href="{% url 'chat_attachment_download' msg.id %}" class="mt-2 inline-block text-sm font-bold text-blue-700 underline">Download</a>
-              <a href="{{ msg.attachment.url }}" target="_blank" class="ml-3 inline-block text-sm font-bold text-emerald-700 underline">Open</a>
+              <div class="mt-2 text-xs font-bold text-blue-600">
+                <a href="{% url 'chat_attachment_download' msg.id %}" class="underline">DOWNLOAD</a>
+                <a href="{{ msg.attachment.url }}" target="_blank" class="ml-3 underline">OPEN</a>
+              </div>
             </div>
           {% endif %}
-          <div class="msg-line">{{ msg.created_at|date:"Y-m-d H:i" }}</div>
+          <div class="msg-line">{{ msg.created_at|date:"H:i" }}</div>
         </div>
         {% empty %}
         <div class="text-sm text-slate-500">No chat messages.</div>
         {% endfor %}
       </div>
-    </section>
+    </div>
 
-    {% if selected_profile %}
-    <section class="card p-4">
-      <h2 class="text-xl font-black">Reply</h2>
-      <form method="post" action="{% url 'admin_chat_send' %}" enctype="multipart/form-data" class="mt-3 grid gap-3">
+    <div class="chat-input-wrap">
+      <form id="adminSendMessageForm" method="post" action="{% url 'admin_chat_send' %}" enctype="multipart/form-data" class="chat-input-inner">
         {% csrf_token %}
         <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
         <input type="hidden" name="q" value="{{ query }}">
-        <textarea name="message" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Type admin reply"></textarea>
-        <input type="file" name="attachment" accept=".jpg,.jpeg,.png,.pdf,.webp,.gif" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-        <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white">Send Reply</button>
+        <input id="adminAttachmentInput" type="file" name="attachment" accept=".jpg,.jpeg,.png,.pdf,.webp,.gif" class="hidden-file">
+        <button type="button" id="adminAttachBtn" class="attach-btn">+</button>
+        <input name="message" class="msg-input" placeholder="Type a message...">
+        <button type="submit" class="send-btn">&#10148;</button>
       </form>
-    </section>
+    </div>
+    {% else %}
+    <div class="h-full grid place-items-center p-10 text-slate-500 font-semibold">No applicant thread selected.</div>
     {% endif %}
-  </main>
+  </section>
 </div>
+
 <script>
   (function () {
-    const layout = document.getElementById("adminLayout");
-    const btn = document.getElementById("sidebarAdjustBtn");
-    if (!layout || !btn) return;
-    const saved = localStorage.getItem("admin_sidebar_compact");
-    if (saved === "1") layout.classList.add("compact");
-    btn.addEventListener("click", () => {
-      layout.classList.toggle("compact");
-      localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
-    });
-
-    document.querySelectorAll(".msg-menu-toggle").forEach((menuBtn) => {
-      menuBtn.addEventListener("click", (e) => {
+    document.querySelectorAll('.header-menu-toggle').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        document.querySelectorAll(".msg-menu.open").forEach((m) => m.classList.remove("open"));
-        const menu = menuBtn.parentElement.querySelector(".msg-menu");
-        if (menu) menu.classList.toggle("open");
+        document.querySelectorAll('.msg-menu.open').forEach((m) => m.classList.remove('open'));
+        const menu = btn.parentElement.querySelector('.msg-menu');
+        if (menu) menu.classList.toggle('open');
       });
     });
-    document.addEventListener("click", () => {
-      document.querySelectorAll(".msg-menu.open").forEach((m) => m.classList.remove("open"));
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.msg-menu.open').forEach((m) => m.classList.remove('open'));
     });
-    const thread = document.getElementById("chatThread");
+    const chatWrap = document.querySelector('.chat-wrap');
+    const selectBtn = document.getElementById('adminSelectModeBtn');
+    const deleteSelectedForm = document.getElementById('adminDeleteSelectedForm');
+    const selectedInput = document.getElementById('adminSelectedIdsInput');
+    if (selectBtn && chatWrap) {
+      selectBtn.addEventListener('click', function () {
+        chatWrap.classList.toggle('select-mode');
+      });
+    }
+    if (deleteSelectedForm && selectedInput) {
+      deleteSelectedForm.addEventListener('submit', function () {
+        const selected = [];
+        document.querySelectorAll('[data-message-row]').forEach((row) => {
+          const cb = row.querySelector('.message-select-box');
+          if (cb && cb.checked) selected.push(row.getAttribute('data-message-id'));
+        });
+        selectedInput.value = selected.join(',');
+      });
+    }
+
+    const thread = document.getElementById('chatThread');
     if (thread) thread.scrollTop = thread.scrollHeight;
-    document.querySelectorAll("form[action$='chat/send/']").forEach((form) => {
-      form.addEventListener("submit", () => {
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.textContent = "Sending...";
+
+    const attachBtn = document.getElementById('adminAttachBtn');
+    const inputFile = document.getElementById('adminAttachmentInput');
+    if (attachBtn && inputFile) {
+      attachBtn.addEventListener('click', function () { inputFile.click(); });
+    }
+
+    const form = document.getElementById('adminSendMessageForm');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(form);
+        const msgText = (formData.get('message') || '').toString().trim();
+        const att = formData.get('attachment');
+        if (!msgText && (!att || !att.name)) return;
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) { btn.disabled = true; btn.textContent = '...'; }
+        try {
+          const resp = await fetch('{% url "admin_chat_send" %}', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.ok) throw new Error((data && data.error) || 'Send failed');
+          const m = data.message || {};
+          const list = thread ? thread.querySelector('.space-y-3') : null;
+          if (list) {
+            const row = document.createElement('div');
+            row.className = 'bubble bubble-admin';
+            row.setAttribute('data-message-row', '');
+            row.setAttribute('data-message-id', m.id || '');
+            const safeMsg = (m.message || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+            let attachmentHtml = '';
+            const a = m.attachment || {};
+            if (a.url) {
+              if (a.kind === 'image') {
+                attachmentHtml = `<div class="mt-2"><img src="${a.url}" alt="${a.name || ''}" class="att-image"><div class="mt-2 text-xs font-bold text-blue-600"><a href="${a.download_url}" class="underline">DOWNLOAD</a><a href="${a.url}" target="_blank" class="ml-3 underline">OPEN</a></div></div>`;
+              } else if (a.kind === 'pdf') {
+                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="text-xs font-semibold text-rose-500">PDF DOCUMENT</div><div class="text-sm font-bold text-slate-900">${a.name || ''}</div></div><div class="mt-2 text-xs font-bold text-blue-600"><a href="${a.download_url}" class="underline">DOWNLOAD</a><a href="${a.url}" target="_blank" class="ml-3 underline">OPEN</a></div></div>`;
+              } else {
+                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="text-xs font-semibold text-slate-600">Attachment</div><div class="text-sm font-bold text-slate-900">${a.name || ''}</div></div><div class="mt-2 text-xs font-bold text-blue-600"><a href="${a.download_url}" class="underline">DOWNLOAD</a><a href="${a.url}" target="_blank" class="ml-3 underline">OPEN</a></div></div>`;
+              }
+            }
+            row.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="font-semibold text-sm">Admin</div><input type="checkbox" class="select-box message-select-box"></div>${safeMsg ? `<div class="mt-1 text-sm">${safeMsg}</div>` : ''}${attachmentHtml}<div class="msg-line">${m.time || ''}</div>`;
+            list.appendChild(row);
+            thread.scrollTop = thread.scrollHeight;
+          }
+          form.reset();
+        } catch (err) {
+          console.error(err);
+        } finally {
+          if (btn) { btn.disabled = false; btn.innerHTML = '&#10148;'; }
         }
       });
-    });
+    }
   })();
 </script>
 {% endblock %}
+

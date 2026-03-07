@@ -70,6 +70,17 @@ class UserProfile(models.Model):
     photo         = models.ImageField(upload_to='profile_photos/', null=True, blank=True)
     signature     = models.ImageField(upload_to='profile_signatures/', null=True, blank=True)
     chat_enabled  = models.BooleanField(default=False)
+    master_data_last_saved_at = models.DateTimeField(null=True, blank=True)
+    master_data_unmask_until = models.DateTimeField(null=True, blank=True)
+    master_data_unmask_date = models.DateField(null=True, blank=True)
+    master_data_unmask_count = models.PositiveSmallIntegerField(default=0)
+    apply_autofill_locked_until = models.DateTimeField(null=True, blank=True)
+    apply_profile_view_date = models.DateField(null=True, blank=True)
+    apply_profile_view_count = models.PositiveSmallIntegerField(default=0)
+    apply_profile_unmask_until = models.DateTimeField(null=True, blank=True)
+    apply_profile_unmask_date = models.DateField(null=True, blank=True)
+    apply_profile_unmask_count = models.PositiveSmallIntegerField(default=0)
+    apply_draft_data = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"{self.full_name} ({self.user.username})"
@@ -283,3 +294,68 @@ class PaymentSetting(models.Model):
 
     def __str__(self):
         return self.upi_id or "Payment Setting"
+
+
+class ApplicationHistory(models.Model):
+    ACTION_STATUS = "status_update"
+    ACTION_CANCEL = "cancel"
+    ACTION_REMOVE = "remove"
+    ACTION_CHOICES = [
+        (ACTION_STATUS, "Status Update"),
+        (ACTION_CANCEL, "Cancelled"),
+        (ACTION_REMOVE, "Removed"),
+    ]
+
+    application = models.ForeignKey(
+        Application, null=True, blank=True, on_delete=models.SET_NULL, related_name="history_entries"
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default=ACTION_STATUS)
+    profile_name = models.CharField(max_length=150, blank=True)
+    applicant_username = models.CharField(max_length=150, blank=True)
+    vacancy_title = models.CharField(max_length=220, blank=True)
+    actor_username = models.CharField(max_length=150, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} - {self.profile_name or self.applicant_username}"
+
+
+class MasterDataField(models.Model):
+    STEP_PERSONAL = "personal"
+    STEP_ADDRESS = "address"
+    STEP_ACADEMIC = "academic"
+    STEP_COLLEGE = "college"
+    STEP_BANK = "bank"
+    STEP_DOCUMENTS = "documents"
+    STEP_CHOICES = [
+        (STEP_PERSONAL, "Personal"),
+        (STEP_ADDRESS, "Address"),
+        (STEP_ACADEMIC, "Academic"),
+        (STEP_COLLEGE, "College"),
+        (STEP_BANK, "Bank"),
+        (STEP_DOCUMENTS, "Documents"),
+    ]
+
+    KIND_TEXT = "text"
+    KIND_DOCUMENT = "document"
+    KIND_CHOICES = [
+        (KIND_TEXT, "Text Field"),
+        (KIND_DOCUMENT, "Document Upload"),
+    ]
+
+    step = models.CharField(max_length=20, choices=STEP_CHOICES, default=STEP_PERSONAL)
+    label = models.CharField(max_length=140)
+    field_kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_TEXT)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["step", "display_order", "label", "id"]
+
+    def __str__(self):
+        return f"{self.get_step_display()} - {self.label}"

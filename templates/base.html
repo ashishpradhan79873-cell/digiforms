@@ -1,12 +1,21 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Digi Form">
+    <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
     <title>{% block title %}Government Portal{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
     <style>
+        html, body { height: 100%; }
+        body { min-height: 100dvh; }
         .panel { background: rgba(255, 255, 255, 0.92); }
         .chip {
             display: inline-flex;
@@ -47,5 +56,30 @@
 
         {% block content %}{% endblock %}
     </main>
+    <script>
+      (function () {
+        // Best-effort client-side protection (browser level hard block possible nahi hota).
+        document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+        document.addEventListener("keydown", function (e) {
+          const key = (e.key || "").toLowerCase();
+          if (key === "printscreen") {
+            e.preventDefault();
+            return false;
+          }
+          if ((e.ctrlKey || e.metaKey) && (key === "p" || key === "s" || key === "u")) {
+            e.preventDefault();
+            return false;
+          }
+          if (e.ctrlKey && e.shiftKey && (key === "i" || key === "j" || key === "c")) {
+            e.preventDefault();
+            return false;
+          }
+        });
+        // Mobile address bar minimize best-effort.
+        if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+          setTimeout(function () { window.scrollTo(0, 1); }, 50);
+        }
+      })();
+    </script>
 </body>
 </html>

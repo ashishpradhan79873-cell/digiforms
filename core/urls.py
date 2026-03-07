@@ -7,7 +7,10 @@ urlpatterns = [
     path("news/", views.news_hub, name="news_hub"),
     path("news/<int:news_id>/", views.news_detail, name="news_detail"),
     path("send-to-admin/", views.confirm_send_to_admin, name="confirm_send_to_admin"),
+    path("send-to-admin/profile/", views.apply_profile_preview, name="apply_profile_preview"),
     path("chat/", views.user_chat, name="user_chat"),
+    path("chat/clear/", views.user_chat_clear_thread, name="user_chat_clear_thread"),
+    path("chat/delete-selected/", views.user_chat_delete_selected, name="user_chat_delete_selected"),
     path("chat/message/<int:message_id>/delete/", views.user_chat_delete_message, name="user_chat_delete_message"),
     path("chat/message/<int:message_id>/attachment/download/", views.chat_attachment_download, name="chat_attachment_download"),
     path("student-services/", views.student_services_dashboard, name="student_services_dashboard"),
@@ -30,6 +33,16 @@ urlpatterns = [
         "admin-panel/applicants/<int:application_id>/remove/",
         views.admin_remove_application,
         name="admin_remove_application",
+    ),
+    path(
+        "admin-panel/applicants/history/<int:history_id>/remove/",
+        views.admin_remove_history_entry,
+        name="admin_remove_history_entry",
+    ),
+    path(
+        "admin-panel/applicants/history/clear/",
+        views.admin_clear_history,
+        name="admin_clear_history",
     ),
     path(
         "admin-panel/applicants/<int:application_id>/detail-json/",
@@ -62,6 +75,11 @@ urlpatterns = [
         views.admin_option_control,
         name="admin_option_control",
     ),
+    path(
+        "admin-panel/master-data/",
+        views.admin_master_data_control,
+        name="admin_master_data_control",
+    ),
     path("admin-panel/documents/", views.admin_documents, name="admin_documents"),
     path("admin-panel/chat/", views.admin_chat, name="admin_chat"),
     path("admin-panel/news/", views.admin_news, name="admin_news"),
@@ -76,6 +94,16 @@ urlpatterns = [
         "admin-panel/chat/message/<int:message_id>/delete/",
         views.admin_chat_delete_message,
         name="admin_chat_delete_message",
+    ),
+    path(
+        "admin-panel/chat/delete-selected/",
+        views.admin_chat_delete_selected,
+        name="admin_chat_delete_selected",
+    ),
+    path(
+        "admin-panel/chat/<int:profile_id>/clear/",
+        views.admin_chat_clear_thread,
+        name="admin_chat_clear_thread",
     ),
     path("admin-panel/options/save/", views.admin_save_vacancy, name="admin_save_vacancy"),
     path(

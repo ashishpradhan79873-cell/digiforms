@@ -17,6 +17,17 @@
   .layout.compact .side .menu-link .material-symbols-outlined { margin:0; }
   .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
   .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .menu-link .material-symbols-outlined { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:#fff; font-size:19px; box-shadow:0 6px 14px rgba(15,23,42,.12); }
+  .side nav .menu-link:nth-of-type(1) .material-symbols-outlined { background:linear-gradient(135deg,#8e24aa,#ba68c8); }
+  .side nav .menu-link:nth-of-type(2) .material-symbols-outlined { background:linear-gradient(135deg,#1565c0,#42a5f5); }
+  .side nav .menu-link:nth-of-type(3) .material-symbols-outlined { background:linear-gradient(135deg,#ef6c00,#ffb74d); }
+  .side nav .menu-link:nth-of-type(4) .material-symbols-outlined { background:linear-gradient(135deg,#00897b,#26a69a); }
+  .side nav .menu-link:nth-of-type(5) .material-symbols-outlined { background:linear-gradient(135deg,#f9a825,#ffd54f); color:#1f2937; }
+  .side nav .menu-link:nth-of-type(6) .material-symbols-outlined { background:linear-gradient(135deg,#2e7d32,#66bb6a); }
+  .side nav .menu-link:nth-of-type(7) .material-symbols-outlined { background:linear-gradient(135deg,#c62828,#ef5350); }
+  .side nav .menu-link:nth-of-type(8) .material-symbols-outlined { background:linear-gradient(135deg,#283593,#5c6bc0); }
+  .side nav .menu-link:nth-of-type(9) .material-symbols-outlined { background:linear-gradient(135deg,#4b5563,#9ca3af); }
+  .menu-link.active .material-symbols-outlined { transform:translateY(-1px); box-shadow:0 8px 18px rgba(29,78,216,.25); }
   .panel { padding:16px; min-width:0; }
   .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
   .btn { border-radius:8px; font-weight:700; padding:6px 9px; border:1px solid transparent; font-size:12px; line-height:1.2; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
@@ -48,6 +59,7 @@
       <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
       <a class="menu-link {% if category == 'student' %}active{% endif %}" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
       <a class="menu-link {% if category == 'government' %}active{% endif %}" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_master_data_control' %}"><span class="material-symbols-outlined">table_chart</span><span class="menu-label">Master Data</span></a>
       <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
       <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
       <a class="menu-link" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
@@ -136,6 +148,16 @@
             <div data-field-hidden></div>
           </div>
         </div>
+        <div class="md:col-span-2 lg:col-span-4">
+          <label class="mini-label">Bulk Paste (Category, Field Name, Remark)</label>
+          <textarea
+            name="bulk_requirements"
+            class="mini-input"
+            rows="5"
+            placeholder="Category,Field Name,Remark&#10;Personal Info,Religion,Hindu...&#10;Documents,Photo,100-200 KB"
+          ></textarea>
+          <p class="mt-1 text-[11px] text-slate-500 font-semibold">Ek baar me poori list paste karo. Save par auto parse hoke Data / Document rows ban jayenge.</p>
+        </div>
         <div class="flex items-end gap-2">
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
           <button type="submit" class="btn btn-green">Add Option</button>
@@ -158,7 +180,7 @@
         </thead>
         <tbody>
           {% for opt in options %}
-          <tr class="border-t border-slate-200">
+          <tr class="border-t border-slate-200" data-vacancy-row="{{ opt.id }}">
             <td class="px-3 py-2 align-top">
               {% if opt.image %}
                 <img src="{{ opt.image.url }}" alt="{{ opt.title }}" class="h-10 w-20 rounded object-cover border border-slate-200">
@@ -236,13 +258,23 @@
                   </table>
                   <div data-field-hidden></div>
                 </div>
+                <div>
+                  <label class="mini-label">Bulk Paste (Append New Rows)</label>
+                  <textarea
+                    name="bulk_requirements"
+                    class="mini-input"
+                    rows="4"
+                    placeholder="Category,Field Name,Remark&#10;Address,Guardian Name,...&#10;Documents,ABC ID,..."
+                  ></textarea>
+                  <p class="mt-1 text-[11px] text-slate-500 font-semibold">Yahan paste kiya data existing rows me append hoga (duplicate auto skip).</p>
+                </div>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="clear_image"> Remove current image</label>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="is_active" {% if opt.is_active %}checked{% endif %}> Active</label>
                 <div>
                   <button type="submit" class="btn btn-green">Edit Save</button>
                 </div>
               </form>
-              <form method="post" action="{% url 'admin_delete_vacancy' opt.id %}" class="mt-2">
+              <form method="post" action="{% url 'admin_delete_vacancy' opt.id %}" class="mt-2 js-ajax-vacancy-remove" data-vacancy-id="{{ opt.id }}">
                 {% csrf_token %}
                 <input type="hidden" name="option_scope" value="{{ category }}">
                 <button type="submit" class="btn btn-red">Remove</button>
@@ -463,6 +495,32 @@
       if (box.querySelector("[data-doc-table]")) bindDocEditor(box);
     });
     document.querySelectorAll("[data-field-editor]").forEach(bindFieldEditor);
+
+    document.querySelectorAll(".js-ajax-vacancy-remove").forEach((form) => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const resp = await fetch(form.action, {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: new FormData(form),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.ok) throw new Error("remove failed");
+          const row = document.querySelector(`[data-vacancy-row="${form.dataset.vacancyId}"]`);
+          if (data.deleted && row) row.remove();
+          if (data.deactivated && row) {
+            const activeCell = row.children[5];
+            if (activeCell) activeCell.textContent = "No";
+          }
+        } catch (err) {
+          console.error(err);
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    });
   })();
 </script>
 {% endblock %}
