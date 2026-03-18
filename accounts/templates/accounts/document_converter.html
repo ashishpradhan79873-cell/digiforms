@@ -2,7 +2,7 @@
 
 {% block title %}Document Converter{% endblock %}
 {% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
-{% block page_container_class %}max-w-5xl mx-auto p-3 md:p-5{% endblock %}
+{% block page_container_class %}w-full max-w-[1180px] mx-auto p-2 sm:p-3 md:p-5{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
@@ -23,19 +23,19 @@
   .crop-stage { width:100%; max-width:430px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; display:block; touch-action:none; }
   .preview { width:100%; max-height:220px; object-fit:contain; border:1px solid #dbe3ef; border-radius:8px; background:#fff; }
   @media (max-width: 640px) {
+    .card { border-radius:10px; }
     .btn, .tab-btn { width:100%; text-align:center; }
+    .crop-wrap { width:100%; }
+    .crop-stage { max-width:none; min-height:280px; }
+    .preview { max-height:none; }
   }
 </style>
 
-<header class="card p-4 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl md:text-2xl font-black">Document Converter</h1>
-    <p class="text-xs text-slate-600 mt-1">Image to PDF, Photo/Signature Resizer, PDF to Image, 2-Photo Merge</p>
-  </div>
+<div class="mb-3 flex justify-end">
   <a href="{% url 'master_data_option' %}" class="btn btn-soft">Back</a>
-</header>
+</div>
 
-<section class="card mt-4 p-4">
+<section class="card p-4">
   <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
     <button type="button" class="tab-btn active" data-tab="imgpdf">1) Image to PDF</button>
     <button type="button" class="tab-btn" data-tab="resize">2) Photo & Signature Resizer</button>

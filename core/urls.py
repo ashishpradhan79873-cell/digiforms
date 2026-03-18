@@ -117,6 +117,11 @@ urlpatterns = [
         name="admin_update_vacancy",
     ),
     path(
+        "admin-panel/options/<int:vacancy_id>/toggle-active/",
+        views.admin_toggle_vacancy_active,
+        name="admin_toggle_vacancy_active",
+    ),
+    path(
         "admin-panel/applicants/<int:application_id>/documents/demo/<str:doc_type>/",
         views.admin_demo_document_download,
         name="admin_demo_document_download",

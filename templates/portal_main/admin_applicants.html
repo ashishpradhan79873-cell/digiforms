@@ -274,10 +274,20 @@
     return (text || "").toString().replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
   }
 
+  function formatValue(value) {
+    const raw = (value || "").toString();
+    if (!raw) return "-";
+    if (/https?:\/\//i.test(raw)) return escapeHtml(raw);
+    if (!raw.includes("/")) return escapeHtml(raw);
+    const parts = raw.split("/").map((p) => escapeHtml(p.trim())).filter((p) => p.length);
+    return parts.length ? parts.join("<br>") : escapeHtml(raw);
+  }
+
   function rowHtml(label, value) {
     const safeLabel = escapeHtml(label);
-    const safeValue = escapeHtml(value || "-");
-    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${safeValue}" title="Copy"><span class="material-symbols-outlined">content_copy</span></button></div>`;
+    const safeValue = formatValue(value);
+    const copyValue = (value || "-").toString();
+    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${escapeHtml(copyValue)}" title="Copy"><span class="material-symbols-outlined">content_copy</span></button></div>`;
   }
 
   function sectionHtml(title, rows) {

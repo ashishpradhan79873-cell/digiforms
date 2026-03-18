@@ -3,10 +3,12 @@ import io
 import json
 import zipfile
 import re
+import logging
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 from datetime import date, timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
@@ -30,6 +32,8 @@ from accounts.models import (
     Vacancy,
 )
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_CATALOG = [
@@ -127,6 +131,46 @@ def _collect_multi_values(request, text_name, list_name):
         seen.add(key)
         merged.append(item)
     return merged
+
+
+def _collect_doc_editor_inputs(request):
+    names = request.POST.getlist("doc_name[]")
+    types = request.POST.getlist("doc_type[]")
+    output = []
+    for idx, raw_name in enumerate(names):
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        t = str(types[idx] if idx < len(types) else "DOC").strip().upper()
+        if t not in {"DOC", "PHOTO", "DATA"}:
+            t = "DOC"
+        output.append(f"{t}|{name}")
+    return output
+
+
+def _collect_field_editor_inputs(request):
+    values = []
+    for raw in request.POST.getlist("field_name[]"):
+        v = str(raw or "").strip()
+        if v:
+            values.append(v)
+    return values
+
+
+def _payload_has_any_values(payload):
+    if not isinstance(payload, dict):
+        return False
+    for key, val in payload.items():
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and str(item.get("value", "")).strip():
+                    return True
+    # also handle vacancy_required_documents drafts if present
+    if isinstance(payload.get("vacancy_required_documents"), list):
+        for item in payload.get("vacancy_required_documents", []):
+            if isinstance(item, dict) and str(item.get("value", "")).strip():
+                return True
+    return False
 
 
 def _parse_required_doc_name(raw_value):
@@ -275,6 +319,14 @@ def _parse_bulk_requirements(raw_text):
         return docs, profile_fields
 
     current_section = ""
+    known_sections = {
+        "personal", "personal info", "personal details",
+        "address", "address details",
+        "academic", "academic details", "education",
+        "college", "college details",
+        "bank", "bank details", "account",
+        "documents", "document", "documents (upload)",
+    }
     lines = [ln.strip() for ln in str(raw_text).splitlines() if ln.strip()]
     for line in lines:
         lower_line = line.lower()
@@ -296,29 +348,78 @@ def _parse_bulk_requirements(raw_text):
         if not cols:
             continue
         if len(cols) == 1:
-            field_name = cols[0]
+            field_names = [cols[0]]
             section_name = current_section
         else:
             section_name = cols[0] or current_section
-            field_name = cols[1] if len(cols) > 1 else ""
+            if section_name.strip().lower() not in known_sections:
+                field_names = [c for c in cols if c]
+                section_name = current_section
+            else:
+                # Typical bulk format: Category, Field Name, Remark
+                # Support: Category, Field1, Field2, Field3 (no/short remarks)
+                field_names = []
+                if len(cols) > 1 and cols[1]:
+                    field_names.append(cols[1])
+                for extra in cols[2:]:
+                    extra = (extra or "").strip()
+                    if not extra:
+                        continue
+                    # Skip long remarks; keep short extra field names.
+                    if len(extra) > 40:
+                        continue
+                    low = extra.lower()
+                    if low in {"yes", "no", "if applicable"}:
+                        continue
+                    if low.startswith(("e.g", "eg", "example")):
+                        continue
+                    field_names.append(extra)
 
         if section_name:
             current_section = section_name
-        field_name = re.sub(r"\s+", " ", str(field_name or "")).strip().strip('"')
-        if not field_name:
-            continue
-        if field_name.startswith("(") and field_name.endswith(")"):
-            continue
+        for field_name in field_names:
+            field_name = re.sub(r"\s+", " ", str(field_name or "")).strip().strip('"')
+            if not field_name:
+                continue
+            if field_name.startswith("(") and field_name.endswith(")"):
+                continue
 
-        kind, clean_field = _classify_bulk_requirement(current_section, field_name)
-        if not clean_field:
-            continue
-        if kind == "DATA":
-            profile_fields.append(clean_field)
-        else:
-            docs.append(f"{kind}|{clean_field}")
+            kind, clean_field = _classify_bulk_requirement(current_section, field_name)
+            if not clean_field:
+                continue
+            if kind == "DATA":
+                profile_fields.append(clean_field)
+            else:
+                docs.append(f"{kind}|{clean_field}")
 
     return _merge_unique_casefold(docs), _merge_unique_casefold(profile_fields)
+
+
+def _parse_bulk_documents(raw_text):
+    text = str(raw_text or "").strip()
+    if not text:
+        return []
+    # Accept simple lists like:
+    # PAN Card
+    # Passport Photo
+    # Signature
+    # or explicit kind rows like DOC|PAN Card / PHOTO|Passport Photo / DATA|Something
+    docs, _ = _parse_bulk_requirements(text)
+    if docs:
+        return docs
+    items = []
+    for line in text.replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # allow comma-separated in one line
+        for part in [p.strip() for p in line.split(",") if p.strip()]:
+            if part.upper().startswith(("DOC|", "PHOTO|", "DATA|")):
+                items.append(part)
+            else:
+                kind, clean = _classify_bulk_requirement("documents", part)
+                items.append(f"{kind}|{clean}")
+    return _merge_unique_casefold(items)
 
 
 def home_router(request):
@@ -806,17 +907,46 @@ def _decorate_chat_messages(messages_qs):
     return decorated
 
 
+def _validate_chat_attachment(uploaded):
+    if not uploaded:
+        return None
+    name = (getattr(uploaded, "name", "") or "").lower()
+    size = int(getattr(uploaded, "size", 0) or 0)
+    content_type = (getattr(uploaded, "content_type", "") or "").lower()
+
+    # Keep it simple: images + pdf. Prevents weird types causing storage errors.
+    allowed_ext = (".jpg", ".jpeg", ".png", ".webp", ".pdf")
+    if not any(name.endswith(ext) for ext in allowed_ext):
+        return "Sirf JPG/PNG/WEBP ya PDF allowed hai."
+
+    # 10 MB max (safe for PythonAnywhere + Cloud uploads)
+    if size and size > 10 * 1024 * 1024:
+        return "File size 10MB se kam hona chahiye."
+
+    if name.endswith(".pdf") and content_type and "pdf" not in content_type:
+        # Some browsers send application/octet-stream; don't hard-block those.
+        pass
+    return None
+
+
 def _chat_message_payload(msg):
+    attachment_url = ""
+    if msg.attachment:
+        try:
+            attachment_url = msg.attachment.url
+        except Exception:
+            attachment_url = ""
     return {
         "id": msg.id,
         "from_admin": bool(msg.from_admin),
         "message": msg.message or "",
         "time": msg.created_at.strftime("%H:%M"),
         "attachment": {
-            "url": msg.attachment.url if msg.attachment else "",
+            "url": attachment_url,
+            "open_url": reverse("chat_attachment_download", args=[msg.id]) if msg.attachment else "",
             "name": _file_download_name(msg.attachment) if msg.attachment else "",
             "kind": _attachment_kind(msg.attachment.name) if msg.attachment else "",
-            "download_url": reverse("chat_attachment_download", args=[msg.id]) if msg.attachment else "",
+            "download_url": (reverse("chat_attachment_download", args=[msg.id]) + "?dl=1") if msg.attachment else "",
         },
     }
 
@@ -901,7 +1031,7 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
         for title, url in available.items():
             if key in title or title in key:
                 return url
-        return "Not uploaded yet"
+        return ""
 
     for doc_name in required_docs:
         doc_kind, clean_name = _parse_required_doc_name(doc_name)
@@ -913,7 +1043,7 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
         )
         if doc_kind == "Data" and has_data_duplicate:
             continue
-        if doc_kind in {"Document", "Photo"} and _find_doc_value(doc_name) not in {"", "Not uploaded yet"}:
+        if doc_kind in {"Document", "Photo"} and _find_doc_value(doc_name) not in {""}:
             continue
         row_label = f"Required ({doc_kind}): {clean_name}"
         if row_label.strip().lower() in existing_labels:
@@ -962,7 +1092,7 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
                     value = url
                     break
         if not value:
-            value = "Not uploaded yet"
+            value = ""
         rows.append(
             {
                 "idx": idx,
@@ -973,7 +1103,7 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
                 "checkbox_name": f"vacdoc_select__{idx}",
                 "file_input_name": f"vacdoc_file__{idx}",
                 "checked": True,
-                "exists": value not in {"", "Not uploaded yet"},
+                "exists": value not in {""},
             }
         )
     return rows
@@ -1316,15 +1446,10 @@ def confirm_send_to_admin(request):
     if not pending:
         messages.info(request, "Pehle koi form select karke Apply click karo.")
         return redirect("role_select")
-    now = timezone.now()
-    lock_until = getattr(profile, "apply_autofill_locked_until", None)
-    lock_active = bool(lock_until and now < lock_until)
-    timed_out_active = _is_pending_apply_timed_out(pending)
-    if timed_out_active and not lock_active:
-        profile.apply_autofill_locked_until = now + timedelta(hours=AUTOFILL_LOCK_HOURS)
-        profile.save(update_fields=["apply_autofill_locked_until"])
-        lock_until = profile.apply_autofill_locked_until
-        lock_active = True
+    # Autofill lock/masking: user request -> disable for now.
+    lock_until = None
+    lock_active = False
+    timed_out_active = False
     vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
     profile_draft = _get_profile_draft(profile, vacancy.id)
     payment_setting = _active_payment_setting()
@@ -1349,10 +1474,7 @@ def confirm_send_to_admin(request):
 
     if request.method == "POST":
         submit_mode = request.POST.get("submit_mode", "skip")
-        selected_steps = request.POST.getlist("steps")
-        if not selected_steps:
-            messages.error(request, "Kam se kam ek data step select karo.")
-            return redirect("confirm_send_to_admin")
+        selected_steps = []
         if submit_mode not in {"save_only", "save_master"}:
             consent_1 = request.POST.get("consent_data_usage") == "1"
             consent_2 = request.POST.get("consent_user_responsibility") == "1"
@@ -1361,40 +1483,37 @@ def confirm_send_to_admin(request):
                 return redirect("confirm_send_to_admin")
 
         step_data = _profile_step_data(profile)
-        if timed_out_active or lock_active:
-            step_data = _mask_step_rows(step_data)
+        # masking disabled
+        required_profile_fields = [
+            item for item in (vacancy.required_profile_fields or [])
+            if str(item or "").strip()
+        ]
         required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
         required_doc_rows = _build_required_doc_rows(
             profile,
             required_docs,
             step_data=step_data,
-            required_profile_fields=vacancy.required_profile_fields,
+            required_profile_fields=required_profile_fields,
         )
-        requested_profile_rows = _build_requested_profile_rows(step_data, vacancy.required_profile_fields)
-        use_requested_only = bool(vacancy.required_profile_fields)
+        requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
+        use_requested_only = bool(required_profile_fields)
 
         payload = {}
         for step_key, _ in PROFILE_DATA_STEPS:
-            if step_key not in selected_steps:
+            if step_key == "documents":
                 continue
-            if use_requested_only and step_key != "documents":
-                rows = requested_profile_rows.get(step_key, [])
-            else:
-                rows = step_data.get(step_key, [])
+            rows = requested_profile_rows.get(step_key, []) if use_requested_only else step_data.get(step_key, [])
             out_rows = []
             for idx, row in enumerate(rows):
                 label = row[0]
                 current_value = row[1] or ""
-                if request.POST.get(f"select__{step_key}__{idx}") != "1":
-                    continue
                 posted_value = request.POST.get(f"field__{step_key}__{idx}", current_value)
                 out_rows.append({"label": label, "value": posted_value})
             if out_rows:
                 payload[step_key] = out_rows
+                selected_steps.append(step_key)
         selected_vac_docs = []
         for row in required_doc_rows:
-            if request.POST.get(row["checkbox_name"]) != "1":
-                continue
             posted_value = request.POST.get(row["input_name"], row.get("value", "") or "").strip()
             uploaded = request.FILES.get(row["file_input_name"])
             if uploaded:
@@ -1404,16 +1523,14 @@ def confirm_send_to_admin(request):
                 posted_value = row.get("value", "") or ""
             if posted_value:
                 selected_vac_docs.append({"label": row["label"], "value": posted_value})
+        if selected_vac_docs:
+            selected_steps.append("documents")
         if submit_mode == "save_only":
             pending["draft_payload"] = payload
             pending["draft_vacancy_docs"] = selected_vac_docs
             pending["last_edit_at"] = timezone.now().isoformat()
             request.session["pending_form_apply"] = pending
             _save_profile_draft(profile, vacancy.id, payload, selected_vac_docs, pending.get("started_at", ""))
-            for item in selected_vac_docs:
-                value = str(item.get("value", "")).strip()
-                if value and value != "Not uploaded yet":
-                    continue
             messages.success(request, "Apply page data + uploaded docs save ho gaye. Ab View Profile me check kar sakte ho.")
             return redirect("confirm_send_to_admin")
         if submit_mode == "save_master":
@@ -1430,13 +1547,13 @@ def confirm_send_to_admin(request):
             return redirect("confirm_send_to_admin")
         if selected_vac_docs:
             payload["vacancy_required_documents"] = selected_vac_docs
-        if not payload:
-            messages.error(request, "Kam se kam ek field select karo.")
+        if not payload and not selected_vac_docs:
+            messages.error(request, "Koi data available nahi hai. Admin panel se vacancy ke liye fields/docs add karo.")
             return redirect("confirm_send_to_admin")
         step_names = {
             key: label for key, label in PROFILE_DATA_STEPS
         }
-        selected_labels = [step_names.get(key, key) for key in selected_steps]
+        selected_labels = [step_names.get(key, key) for key in selected_steps if key in step_names]
         summary_line = "Selected Data: " + ", ".join(selected_labels)
         if selected_vac_docs:
             summary_line += " | Vacancy Docs: " + ", ".join([x["label"] for x in selected_vac_docs])
@@ -1471,14 +1588,17 @@ def confirm_send_to_admin(request):
         return redirect("dashboard")
 
     step_data = _profile_step_data(profile)
-    if timed_out_active or lock_active:
-        step_data = _mask_step_rows(step_data)
+    # masking disabled
+    required_profile_fields = [
+        item for item in (vacancy.required_profile_fields or [])
+        if str(item or "").strip()
+    ]
     required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
     required_doc_rows = _build_required_doc_rows(
         profile,
         required_docs,
         step_data=step_data,
-        required_profile_fields=vacancy.required_profile_fields,
+        required_profile_fields=required_profile_fields,
     )
     if draft_vac_docs:
         draft_doc_map = {}
@@ -1495,8 +1615,9 @@ def confirm_send_to_admin(request):
                 row["value"] = draft_doc_map[key]
                 row["exists"] = row["value"] not in {"", "Not uploaded yet"}
 
-    requested_profile_rows = _build_requested_profile_rows(step_data, vacancy.required_profile_fields)
-    use_requested_only = bool(vacancy.required_profile_fields)
+    requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
+    use_requested_only = bool(required_profile_fields)
+    use_draft_payload = bool(draft_payload) and _payload_has_any_values(draft_payload)
     selected_default = []
     step_cards = []
     for key, label in PROFILE_DATA_STEPS:
@@ -1506,7 +1627,7 @@ def confirm_send_to_admin(request):
             rows = step_data.get(key, [])
         if use_requested_only and key == "documents":
             rows = []
-        if draft_payload:
+        if use_draft_payload:
             rows = _rows_from_payload(draft_payload, key, rows)
         row_items = []
         for idx, row in enumerate(rows):
@@ -1545,9 +1666,10 @@ def confirm_send_to_admin(request):
             "payment_setting": payment_setting,
             "payment_upi_link": payment_upi_link,
             "use_requested_only": use_requested_only,
-            "autofill_lock_active": lock_active,
-            "autofill_lock_until": lock_until,
-            "apply_timed_out": timed_out_active,
+            # kept for backward compat if templates reference these keys in future
+            "autofill_lock_active": False,
+            "autofill_lock_until": None,
+            "apply_timed_out": False,
             "apply_timeout_minutes": APPLY_PENDING_TIMEOUT_MINUTES,
         },
     )
@@ -1560,13 +1682,9 @@ def apply_profile_preview(request):
     vacancy = None
     if pending.get("vacancy_id"):
         vacancy = Vacancy.objects.filter(id=pending.get("vacancy_id")).first()
-    timed_out_active = _is_pending_apply_timed_out(pending)
-    now = timezone.now()
-    lock_until = getattr(profile, "apply_autofill_locked_until", None)
-    if timed_out_active and (not lock_until or now >= lock_until):
-        profile.apply_autofill_locked_until = now + timedelta(hours=AUTOFILL_LOCK_HOURS)
-        profile.save(update_fields=["apply_autofill_locked_until"])
-        lock_until = profile.apply_autofill_locked_until
+    # Autofill lock/masking disabled for now.
+    timed_out_active = False
+    lock_until = None
 
     if request.method == "POST" and request.POST.get("action") == "unlock_apply_profile":
         granted, remaining = _grant_apply_profile_unmask(profile)
@@ -2140,12 +2258,30 @@ def user_chat(request):
                 return JsonResponse({"ok": False, "error": "Message ya attachment bhejo."}, status=400)
             messages.error(request, "Message ya attachment bhejo.")
             return redirect("user_chat")
-        msg = ChatMessage.objects.create(
-            profile=profile,
-            from_admin=False,
-            message=message_text,
-            attachment=attachment,
-        )
+        att_err = _validate_chat_attachment(attachment)
+        if att_err:
+            if is_ajax:
+                return JsonResponse({"ok": False, "error": att_err}, status=400)
+            messages.error(request, att_err)
+            return redirect("user_chat")
+        try:
+            msg = ChatMessage.objects.create(
+                profile=profile,
+                from_admin=False,
+                message=message_text,
+                attachment=attachment,
+            )
+        except Exception as e:
+            # Storage/upload errors (Cloudinary/FS permissions) should not crash the whole page.
+            logger.exception("User chat attachment upload failed (profile_id=%s)", profile.id)
+            if getattr(settings, "DEBUG", False):
+                err_text = f"Attachment upload fail: {type(e).__name__}: {e}"
+            else:
+                err_text = "Attachment upload fail hua. File size/type check karo."
+            if is_ajax:
+                return JsonResponse({"ok": False, "error": err_text}, status=500)
+            messages.error(request, err_text)
+            return redirect("user_chat")
         if is_ajax:
             return JsonResponse({"ok": True, "message": _chat_message_payload(msg)})
         messages.success(request, "Message admin ko send ho gaya.")
@@ -2236,12 +2372,35 @@ def admin_chat_send(request):
         if search:
             redirect_url += f"&q={search}"
         return redirect(redirect_url)
-    msg = ChatMessage.objects.create(
-        profile=profile,
-        from_admin=True,
-        message=message_text,
-        attachment=attachment,
-    )
+    att_err = _validate_chat_attachment(attachment)
+    if att_err:
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": att_err}, status=400)
+        messages.error(request, att_err)
+        redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+        if search:
+            redirect_url += f"&q={search}"
+        return redirect(redirect_url)
+    try:
+        msg = ChatMessage.objects.create(
+            profile=profile,
+            from_admin=True,
+            message=message_text,
+            attachment=attachment,
+        )
+    except Exception as e:
+        logger.exception("Admin chat attachment upload failed (profile_id=%s)", profile.id)
+        if getattr(settings, "DEBUG", False):
+            err_text = f"Attachment upload fail: {type(e).__name__}: {e}"
+        else:
+            err_text = "Attachment upload fail hua. File size/type check karo."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": err_text}, status=500)
+        messages.error(request, err_text)
+        redirect_url = f"{reverse('admin_chat')}?profile_id={profile.id}"
+        if search:
+            redirect_url += f"&q={search}"
+        return redirect(redirect_url)
     if is_ajax:
         return JsonResponse({"ok": True, "message": _chat_message_payload(msg)})
     messages.success(request, "Reply send ho gayi.")
@@ -2368,7 +2527,13 @@ def chat_attachment_download(request, message_id):
     if not (is_owner or is_admin):
         return redirect("dashboard")
     download_name = _file_download_name(msg.attachment)
-    return FileResponse(msg.attachment.open("rb"), as_attachment=True, filename=download_name)
+    # dl=1 => force download; else open inline (WhatsApp style "OPEN").
+    force_download = request.GET.get("dl", "").strip() in {"1", "true", "yes"}
+    return FileResponse(
+        msg.attachment.open("rb"),
+        as_attachment=force_download,
+        filename=download_name,
+    )
 
 
 @login_required
@@ -2384,11 +2549,15 @@ def admin_save_vacancy(request):
     icon_name = request.POST.get("icon_name", "").strip() or "description"
     display_order = request.POST.get("display_order", "0").strip() or "0"
     is_active = request.POST.get("is_active") == "on"
+    editor_docs = _collect_doc_editor_inputs(request)
+    editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
     required_profile_fields = _collect_multi_values(request, "required_profile_fields", "required_profile_fields_item[]")
     bulk_docs, bulk_fields = _parse_bulk_requirements(request.POST.get("bulk_requirements", ""))
-    required_documents = _merge_unique_casefold((required_documents or []) + bulk_docs)
-    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + bulk_fields)
+    extra_bulk_docs = _parse_bulk_documents(request.POST.get("bulk_documents", ""))
+    required_documents = _merge_unique_casefold((required_documents or []) + (editor_docs or []) + bulk_docs)
+    required_documents = _merge_unique_casefold(required_documents + extra_bulk_docs)
+    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + (editor_fields or []) + bulk_fields)
 
     if category not in {Vacancy.CATEGORY_GOVERNMENT, Vacancy.CATEGORY_STUDENT}:
         messages.error(request, "Category valid nahi hai.")
@@ -2422,7 +2591,10 @@ def admin_save_vacancy(request):
     if request.FILES.get("image"):
         vacancy.image = request.FILES["image"]
     vacancy.save()
-    messages.success(request, f"New {vacancy.get_category_display()} option add ho gaya.")
+    messages.success(
+        request,
+        f"New {vacancy.get_category_display()} option add ho gaya. Fields: {len(required_profile_fields)} | Docs: {len(required_documents)}.",
+    )
     return redirect("admin_option_control", category=category)
 
 
@@ -2468,11 +2640,15 @@ def admin_update_vacancy(request, vacancy_id):
     icon_name = request.POST.get("icon_name", "").strip() or "description"
     display_order = request.POST.get("display_order", "0").strip() or "0"
     is_active = request.POST.get("is_active") == "on"
+    editor_docs = _collect_doc_editor_inputs(request)
+    editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
     required_profile_fields = _collect_multi_values(request, "required_profile_fields", "required_profile_fields_item[]")
     bulk_docs, bulk_fields = _parse_bulk_requirements(request.POST.get("bulk_requirements", ""))
-    required_documents = _merge_unique_casefold((required_documents or []) + bulk_docs)
-    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + bulk_fields)
+    extra_bulk_docs = _parse_bulk_documents(request.POST.get("bulk_documents", ""))
+    required_documents = _merge_unique_casefold((required_documents or []) + (editor_docs or []) + bulk_docs)
+    required_documents = _merge_unique_casefold(required_documents + extra_bulk_docs)
+    required_profile_fields = _merge_unique_casefold((required_profile_fields or []) + (editor_fields or []) + bulk_fields)
 
     if not title or not organization or not last_date:
         messages.error(request, "Edit ke liye title, organization, last date required hai.")
@@ -2502,7 +2678,24 @@ def admin_update_vacancy(request, vacancy_id):
     if request.POST.get("clear_image") == "on":
         vacancy.image = None
     vacancy.save()
-    messages.success(request, "Option update ho gaya.")
+    messages.success(
+        request,
+        f"Option update ho gaya. Fields: {len(required_profile_fields)} | Docs: {len(required_documents)}.",
+    )
+    return redirect("admin_option_control", category=option_scope)
+
+
+@login_required
+def admin_toggle_vacancy_active(request, vacancy_id):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_applicants")
+    vacancy = get_object_or_404(Vacancy, id=vacancy_id)
+    vacancy.is_active = not bool(vacancy.is_active)
+    vacancy.save(update_fields=["is_active"])
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True, "vacancy_id": vacancy.id, "is_active": vacancy.is_active})
+    messages.success(request, "Vacancy status update ho gaya.")
+    option_scope = request.POST.get("option_scope", vacancy.category)
     return redirect("admin_option_control", category=option_scope)
 
 

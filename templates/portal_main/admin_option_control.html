@@ -118,13 +118,13 @@
               <tbody data-doc-table>
                 <tr>
                   <td>
-                    <select class="mini-input" data-doc-type>
+                    <select class="mini-input" data-doc-type name="doc_type[]">
                       <option value="DOC">Document</option>
                       <option value="PHOTO">Photo</option>
                       <option value="DATA">Data</option>
                     </select>
                   </td>
-                  <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+                  <td><input class="mini-input" type="text" data-doc-name name="doc_name[]" placeholder="e.g. PAN Card"></td>
                   <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
                 </tr>
               </tbody>
@@ -140,7 +140,7 @@
               <thead><tr><th>Field Name</th><th style="width:80px;">Action</th></tr></thead>
               <tbody data-field-table>
                 <tr>
-                  <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+                  <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
                   <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                 </tr>
               </tbody>
@@ -149,14 +149,30 @@
           </div>
         </div>
         <div class="md:col-span-2 lg:col-span-4">
-          <label class="mini-label">Bulk Paste (Category, Field Name, Remark)</label>
+          <div class="flex items-center justify-between gap-2">
+            <label class="mini-label">Bulk Paste (Category, Field Name, Remark)</label>
+            <button type="button" class="btn btn-soft" data-paste-target="bulkRequirementsNew">Paste</button>
+          </div>
           <textarea
+            id="bulkRequirementsNew"
             name="bulk_requirements"
             class="mini-input"
             rows="5"
             placeholder="Category,Field Name,Remark&#10;Personal Info,Religion,Hindu...&#10;Documents,Photo,100-200 KB"
           ></textarea>
           <p class="mt-1 text-[11px] text-slate-500 font-semibold">Ek baar me poori list paste karo. Save par auto parse hoke Data / Document rows ban jayenge.</p>
+          <div class="flex items-center justify-between gap-2 mt-3">
+            <label class="mini-label">Document-only Bulk Paste</label>
+            <button type="button" class="btn btn-soft" data-paste-target="bulkDocumentsNew">Paste</button>
+          </div>
+          <textarea
+            id="bulkDocumentsNew"
+            name="bulk_documents"
+            class="mini-input"
+            rows="3"
+            placeholder="Documents,Photo,Passport Photo&#10;Documents,Doc,PAN Card"
+          ></textarea>
+          <p class="mt-1 text-[11px] text-slate-500 font-semibold">Sirf documents paste karo; apply page pe sirf ye jo upload section hoga wahi add hoga.</p>
         </div>
         <div class="flex items-end gap-2">
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
@@ -192,6 +208,9 @@
               <form method="post" action="{% url 'admin_update_vacancy' opt.id %}" enctype="multipart/form-data" class="space-y-2">
                 {% csrf_token %}
                 <input type="hidden" name="option_scope" value="{{ category }}">
+                <div class="text-[11px] font-bold text-slate-500">
+                  Current: Fields {{ opt.required_profile_fields|length }} | Docs {{ opt.required_documents|length }} | Active: {{ opt.is_active|yesno:"Yes,No" }}
+                </div>
                 <input class="mini-input" name="title" value="{{ opt.title }}" required>
                 <input class="mini-input" name="organization" value="{{ opt.organization }}" required>
                 <input class="mini-input" type="date" name="last_date" value="{{ opt.last_date|date:'Y-m-d' }}" required>
@@ -209,26 +228,26 @@
                         {% for item in opt.required_documents %}
                           <tr>
                             <td>
-                              <select class="mini-input" data-doc-type>
+                              <select class="mini-input" data-doc-type name="doc_type[]">
                                 <option value="DOC" {% if item|slice:":4" != "PHOTO" and item|slice:":4" != "DATA" %}selected{% endif %}>Document</option>
                                 <option value="PHOTO" {% if item|slice:":5" == "PHOTO" %}selected{% endif %}>Photo</option>
                                 <option value="DATA" {% if item|slice:":4" == "DATA" %}selected{% endif %}>Data</option>
                               </select>
                             </td>
-                            <td><input class="mini-input" type="text" data-doc-name value="{% if item|slice:":6" %}{% if item|slice:":5" == "PHOTO" %}{{ item|slice:"6:" }}{% elif item|slice:":3" == "DOC" %}{{ item|slice:"4:" }}{% elif item|slice:":4" == "DATA" %}{{ item|slice:"5:" }}{% else %}{{ item }}{% endif %}{% endif %}" placeholder="e.g. PAN Card"></td>
+                            <td><input class="mini-input" type="text" data-doc-name name="doc_name[]" value="{% if item|slice:":6" %}{% if item|slice:":5" == "PHOTO" %}{{ item|slice:"6:" }}{% elif item|slice:":3" == "DOC" %}{{ item|slice:"4:" }}{% elif item|slice:":4" == "DATA" %}{{ item|slice:"5:" }}{% else %}{{ item }}{% endif %}{% endif %}" placeholder="e.g. PAN Card"></td>
                             <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
                           </tr>
                         {% endfor %}
                       {% else %}
                         <tr>
                           <td>
-                            <select class="mini-input" data-doc-type>
+                            <select class="mini-input" data-doc-type name="doc_type[]">
                               <option value="DOC">Document</option>
                               <option value="PHOTO">Photo</option>
                               <option value="DATA">Data</option>
                             </select>
                           </td>
-                          <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+                          <td><input class="mini-input" type="text" data-doc-name name="doc_name[]" placeholder="e.g. PAN Card"></td>
                           <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
                         </tr>
                       {% endif %}
@@ -244,13 +263,13 @@
                       {% if opt.required_profile_fields %}
                         {% for item in opt.required_profile_fields %}
                         <tr>
-                          <td><input class="mini-input" type="text" data-field-name value="{{ item }}" placeholder="e.g. Aadhaar No"></td>
+                          <td><input class="mini-input" type="text" data-field-name name="field_name[]" value="{{ item }}" placeholder="e.g. Aadhaar No"></td>
                           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                         </tr>
                         {% endfor %}
                       {% else %}
                         <tr>
-                          <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+                          <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
                           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                         </tr>
                       {% endif %}
@@ -259,14 +278,32 @@
                   <div data-field-hidden></div>
                 </div>
                 <div>
-                  <label class="mini-label">Bulk Paste (Append New Rows)</label>
+                  <div class="flex items-center justify-between gap-2">
+                    <label class="mini-label">Bulk Paste (Append New Rows)</label>
+                    <button type="button" class="btn btn-soft" data-paste-target="bulkRequirementsEdit-{{ opt.id }}">Paste</button>
+                  </div>
                   <textarea
+                    id="bulkRequirementsEdit-{{ opt.id }}"
                     name="bulk_requirements"
                     class="mini-input"
                     rows="4"
                     placeholder="Category,Field Name,Remark&#10;Address,Guardian Name,...&#10;Documents,ABC ID,..."
                   ></textarea>
                   <p class="mt-1 text-[11px] text-slate-500 font-semibold">Yahan paste kiya data existing rows me append hoga (duplicate auto skip).</p>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between gap-2">
+                    <label class="mini-label">Document-only Bulk Paste (Append)</label>
+                    <button type="button" class="btn btn-soft" data-paste-target="bulkDocumentsEdit-{{ opt.id }}">Paste</button>
+                  </div>
+                  <textarea
+                    id="bulkDocumentsEdit-{{ opt.id }}"
+                    name="bulk_documents"
+                    class="mini-input"
+                    rows="3"
+                    placeholder="PAN Card&#10;Passport Photo&#10;Signature"
+                  ></textarea>
+                  <p class="mt-1 text-[11px] text-slate-500 font-semibold">Sirf documents lines paste karo; auto DOC/PHOTO detect hoga.</p>
                 </div>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="clear_image"> Remove current image</label>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="is_active" {% if opt.is_active %}checked{% endif %}> Active</label>
@@ -361,13 +398,13 @@
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>
-            <select class="mini-input" data-doc-type>
+            <select class="mini-input" data-doc-type name="doc_type[]">
               <option value="DOC">Document</option>
               <option value="PHOTO">Photo</option>
               <option value="DATA">Data</option>
             </select>
           </td>
-          <td><input class="mini-input" type="text" data-doc-name placeholder="e.g. PAN Card"></td>
+          <td><input class="mini-input" type="text" data-doc-name name="doc_name[]" placeholder="e.g. PAN Card"></td>
           <td><button type="button" class="btn btn-red" data-remove-doc-row>X</button></td>
         `;
         tbody.appendChild(row);
@@ -414,7 +451,7 @@
       function addRow() {
         const row = document.createElement("tr");
         row.innerHTML = `
-          <td><input class="mini-input" type="text" data-field-name placeholder="e.g. Aadhaar No"></td>
+          <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
         `;
         tbody.appendChild(row);
@@ -496,6 +533,22 @@
     });
     document.querySelectorAll("[data-field-editor]").forEach(bindFieldEditor);
 
+    document.querySelectorAll("[data-paste-target]").forEach((btnPaste) => {
+      btnPaste.addEventListener("click", async () => {
+        const targetId = btnPaste.getAttribute("data-paste-target");
+        if (!targetId) return;
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) target.value = text;
+          target.focus();
+        } catch (e) {
+          target.focus();
+        }
+      });
+    });
+
     document.querySelectorAll(".js-ajax-vacancy-remove").forEach((form) => {
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -517,6 +570,28 @@
           }
         } catch (err) {
           console.error(err);
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll(".js-toggle-active").forEach((form) => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const resp = await fetch(form.action, {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: new FormData(form),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.ok) throw new Error("toggle failed");
+          if (submitBtn) submitBtn.textContent = data.is_active ? "Deactivate" : "Activate";
+        } catch (err) {
+          console.error(err);
+        } finally {
           if (submitBtn) submitBtn.disabled = false;
         }
       });

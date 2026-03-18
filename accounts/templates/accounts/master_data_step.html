@@ -32,8 +32,6 @@
   .nav-link { display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px; font-weight:700; color:#334155; }
   .nav-link.active { background:#e3efff; color:#1769d4; border-left:4px solid #1769d4; }
   .panel { padding: 22px 28px; }
-  .top-title { font-size: 36px; line-height: 1.1; font-weight: 900; color:#0f172a; }
-  .top-subtitle { margin-top:6px; color:#475569; font-size:14px; }
 
   .form-card {
     margin-top: 16px;
@@ -48,24 +46,7 @@
     border-bottom: 1px solid #e3e9f2;
   }
   .card-title { font-size: 27px; font-weight: 900; color:#0f172a; }
-  .card-subtitle { margin-top: 4px; font-size: 18px; color:#475569; }
-  .card-note {
-    margin-top: 14px;
-    background: #f8fbff;
-    border: 1px solid #d9e7fb;
-    color: #365172;
-    border-radius: 10px;
-    padding: 8px 10px;
-    font-size: 12px;
-    font-weight: 600;
-  }
   .card-body { padding: 18px 20px; }
-  .section-label {
-    font-size: 22px;
-    font-weight: 900;
-    color: #0f172a;
-    margin-bottom: 14px;
-  }
   .form-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
   .field label { display:block; font-size: 13px; font-weight: 800; color:#0f172a; margin-bottom: 6px; }
   .input, .select, .textarea {
@@ -81,31 +62,53 @@
   .span2 { grid-column: span 2; }
   .mini-box {
     margin-top: 14px;
-    border: 1px solid #d8e1ee;
-    border-radius: 10px;
-    overflow: hidden;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
   }
-  .mini-head {
-    background:#edf3fb;
-    border-bottom:1px solid #d8e1ee;
-    padding:8px 10px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    font-size:12px;
-    text-transform:uppercase;
-    letter-spacing:.4px;
-    font-weight:800;
-    color:#3c4f68;
-  }
+  .mini-head,
+  .mini-table thead { display:none; }
   .mini-table { width:100%; border-collapse: collapse; }
-  .mini-table th, .mini-table td {
-    border:1px solid #d8e1ee;
-    padding: 8px;
-    font-size:13px;
-    vertical-align: middle;
-    background:#fff;
+  .mini-table,
+  .mini-table tbody,
+  .mini-table tr,
+  .mini-table td { display:block; width:100%; border:none; }
+  .mini-table tr {
+    margin-bottom:18px;
+    padding:0;
+    background:transparent;
   }
+  .mini-table td {
+    padding:0;
+    font-size:13px;
+    background:transparent;
+  }
+  .mini-table td:first-child {
+    margin-bottom:8px;
+    color:#0f172a;
+    font-size:14px;
+    font-weight:800;
+  }
+  .mini-table td.action-col {
+    display:none;
+    margin-top:10px;
+    text-align:right;
+  }
+  .mini-box.show-action .mini-table td.action-col { display:block; }
+  .mini-table .input,
+  .mini-table .select,
+  .mini-table .textarea {
+    width:100%;
+    border:1px solid #d4dde7;
+    border-radius:18px;
+    padding:14px 16px;
+    font-size:15px;
+    color:#0f172a;
+    background:#fbfcff;
+    box-shadow: inset 0 1px 2px rgba(15,23,42,.05);
+  }
+  .mini-table .textarea { min-height:96px; }
   .card-footer {
     padding: 12px 20px;
     border-top: 1px solid #e1e8f3;
@@ -159,10 +162,7 @@
     .form-grid { grid-template-columns: 1fr; }
     .span2 { grid-column: span 1; }
     .panel { padding: 18px; }
-    .top-title { font-size: 30px; }
     .card-title { font-size: 24px; }
-    .card-subtitle { font-size: 16px; }
-    .section-label { font-size: 20px; }
   }
   @media (max-width: 640px) {
     .layout-wrap { grid-template-columns: 1fr; }
@@ -174,18 +174,15 @@
     .panel { padding: 12px; }
     .brand-block { padding: 12px; }
     .brand-block .text-\[30px\] { font-size: 20px; }
-    .brand-block .text-\[15px\] { font-size: 12px; }
     .nav-link { padding: 9px 10px; }
     .nav-link .text-\[18px\] { font-size: 14px; }
-    .top-title { font-size: 22px; }
-    .top-subtitle { font-size: 12px; }
     .card-head { padding: 12px 14px; }
     .card-title { font-size: 19px; }
-    .card-note { font-size: 11px; }
     .card-body { padding: 12px 14px; }
-    .section-label { font-size: 17px; margin-bottom: 10px; }
     .input, .select, .textarea { font-size: 13px; padding: 8px 9px; }
-    .mini-table th, .mini-table td { padding: 6px; font-size: 12px; }
+    .mini-table tr { margin-bottom:14px; }
+    .mini-table td:first-child { font-size:12px; margin-bottom:6px; }
+    .mini-table .input, .mini-table .select, .mini-table .textarea { font-size:13px; padding:12px 14px; }
     .card-footer { padding: 10px 14px; flex-wrap: wrap; }
     .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
   }
@@ -198,7 +195,6 @@
         <div class="rounded-xl bg-blue-600 p-3 text-white"><span class="material-symbols-outlined text-xl">dashboard</span></div>
         <div>
           <p class="text-[30px] font-black leading-none">Digi Form</p>
-          <p class="text-[15px] text-slate-600">Student Portal<br>Academic Session 2024</p>
         </div>
       </div>
     </div>
@@ -240,10 +236,7 @@
     </div>
 
     <div class="flex items-start justify-between gap-4">
-      <div>
-        <h1 class="top-title">Student Portal Form</h1>
-        <p class="top-subtitle">Professional IAS style card layout</p>
-      </div>
+      <div></div>
       <a href="{% url 'role_select' %}" class="btn-secondary">Back</a>
     </div>
     <section class="form-card">
@@ -253,12 +246,9 @@
         {% csrf_token %}
         <div class="card-head">
           <div class="card-title">Section 1: Personal Details</div>
-          <div class="card-note">Fill applicant identity fields. Add custom rows if needed.</div>
         </div>
         <div class="card-body">
-          <div class="section-label">Full Identification</div>
           <div id="personal-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Custom Row</span></div>
             <table id="personal-custom-table" class="mini-table">
               <thead>
                 <tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr>
@@ -293,10 +283,9 @@
       {% if current_step == 'address' %}
       <form method="post">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 2: Address Details</div><div class="card-note">Present and permanent address in professional card format.</div></div>
+        <div class="card-head"><div class="card-title">Section 2: Address Details</div></div>
         <div class="card-body">
           <div id="address-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Custom Rows</span></div>
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="address-table">
@@ -331,10 +320,9 @@
       {% if current_step == 'academic' %}
       <form method="post">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 3: Academic Details</div><div class="card-note">10th, 12th and graduation details.</div></div>
+        <div class="card-head"><div class="card-title">Section 3: Academic Details</div></div>
         <div class="card-body">
           <div id="academic-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Custom Rows</span></div>
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="academic-table">
@@ -366,10 +354,9 @@
       {% if current_step == 'college' %}
       <form method="post">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 4: College Details</div><div class="card-note">College and enrollment information.</div></div>
+        <div class="card-head"><div class="card-title">Section 4: College Details</div></div>
         <div class="card-body">
           <div id="college-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Custom Rows</span></div>
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="college-table">
@@ -399,10 +386,9 @@
       {% if current_step == 'bank' %}
       <form method="post">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 5: Bank / Account Details</div><div class="card-note">Bank details should match passbook records.</div></div>
+        <div class="card-head"><div class="card-title">Section 5: Bank / Account Details</div></div>
         <div class="card-body">
           <div id="bank-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Custom Rows</span></div>
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="bank-table">
@@ -433,10 +419,9 @@
       {% if current_step == 'documents' %}
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 6: Document Upload</div><div class="card-note">Photo and signature preview appears immediately after selecting file.</div></div>
+        <div class="card-head"><div class="card-title">Section 6: Document Upload</div></div>
         <div class="card-body">
           <div id="doc-table-wrap" class="mini-box">
-            <div class="mini-head"><span>Document Rows</span></div>
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="doc-extra-table">

@@ -414,7 +414,7 @@ def _document_file_info(profile, title):
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect("role_select")
+        return redirect("master_data_documents")
     if request.method == "POST":
         user = authenticate(
             request,
@@ -434,7 +434,7 @@ def login_view(request):
 
 def register_view(request):
     if request.user.is_authenticated:
-        return redirect("role_select")
+        return redirect("master_data_documents")
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         mobile = request.POST.get("mobile", "").strip()
@@ -1192,7 +1192,7 @@ def master_data_documents_view(request):
             request,
             f"Master Data save ho gaya. Photo updated: {photo_saved}, Signature updated: {sign_saved}, Other docs: {saved_count}.",
         )
-        return redirect("role_select")
+        return redirect("master_data_documents")
 
     uploaded_map = {doc.title: doc for doc in profile.documents.all()}
     ctx = _step_context(profile, "documents")

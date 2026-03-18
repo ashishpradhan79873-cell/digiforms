@@ -14,9 +14,6 @@
   .row-line:first-child { border-top:none; padding-top:0; }
   .row-label { color:#475569; font-weight:700; }
   .row-value { color:#0f172a; word-break:break-word; }
-  .text-tools { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
-  .text-tool-btn { border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; border-radius:8px; padding:3px 8px; font-size:11px; font-weight:800; line-height:1.1; }
-  .text-tool-btn:hover { background:#e2e8f0; }
   .pay-box { border:1px solid #d7e2f0; border-radius:12px; background:#f8fbff; padding:12px; }
   .pay-btn { display:inline-flex; align-items:center; gap:6px; border-radius:10px; font-weight:800; padding:9px 14px; }
   .hidden-panel { display:none; }
@@ -40,66 +37,35 @@
   <span class="chip">Applicant ID: #{{ profile.id }}</span>
 </header>
 
-{% if autofill_lock_active %}
-<div class="card mt-4 p-4 border border-rose-200 bg-rose-50 text-rose-700 text-sm font-semibold">
-  Auto-fill lock active hai. Yeh page blank mode me hai.
-  {% if autofill_lock_until %}Unlock time: {{ autofill_lock_until|date:"d M Y, H:i" }}{% endif %}
-</div>
-{% endif %}
-{% if apply_timed_out %}
-<div class="card mt-4 p-4 border border-amber-200 bg-amber-50 text-amber-800 text-sm font-semibold">
-  30 minute timeout cross ho gaya. Apply data masked mode me hai.
-  Full देखना हो तो View Profile page me "Unlock Full View (10 Min)" use karo.
-</div>
-{% endif %}
-
 <form method="post" enctype="multipart/form-data" class="card mt-4 p-5">
   {% csrf_token %}
-  <div class="mb-3 flex flex-wrap gap-2">
-    <button type="button" id="allTickBtn" class="inline-flex rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">All Tick</button>
-    <button type="button" id="allUntickBtn" class="inline-flex rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white">All Untick</button>
-  </div>
-  <h2 class="text-xl font-black">Choose Data Sections</h2>
-  {% if use_requested_only %}
-  <p class="text-sm text-slate-600 mt-1">Sirf admin ne vacancy ke liye jo fields maange hain wahi auto-fill ke sath dikh rahe hain.</p>
-  {% else %}
-  <p class="text-sm text-slate-600 mt-1">Jo sections select karoge wahi data apply me use hoga.</p>
-  {% endif %}
+  <h2 class="text-xl font-black">Application Details</h2>
+  <p class="text-sm text-slate-600 mt-1">Admin ne vacancy ke liye jo fields maange hain wahi yahan auto-fill ke saath dikh rahe hain. Aap sirf value edit kar sakte ho.</p>
 
   <div class="mt-4 space-y-3">
     {% for step in step_cards %}
-    <label class="step-box" data-step-box>
-      <div class="flex items-center justify-between gap-2">
-        <div class="font-bold">{{ step.label }}</div>
-        <input type="checkbox" name="steps" value="{{ step.key }}" {% if step.key in selected_default %}checked{% endif %} data-step-checkbox>
-      </div>
+    {% if step.rows %}
+    <div class="step-box">
+      <div class="font-bold">{{ step.label }}</div>
       <div class="mt-3">
         {% for row in step.rows %}
           <div class="row-line">
             <div class="row-label">{{ row.label }}</div>
-            <div class="row-value">
-              <input
-                type="text"
-                name="{{ row.input_name }}"
-                value="{{ row.value }}"
-                class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                data-editable-text="1"
-              >
-              <div class="text-tools">
-                <button type="button" class="text-tool-btn" data-case-mode="capitalize">Aa</button>
-                <button type="button" class="text-tool-btn" data-case-mode="upper">UPPER</button>
+              <div class="row-value">
+                <input
+                  type="text"
+                  name="{{ row.input_name }}"
+                  value="{{ row.value }}"
+                  class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                  data-editable-text="1"
+                >
               </div>
-            </div>
-            <label class="text-xs font-semibold text-slate-700">
-              <input type="checkbox" name="{{ row.checkbox_name }}" value="1" {% if row.checked %}checked{% endif %} data-field-checkbox>
-              Select
-            </label>
+            <div></div>
           </div>
-        {% empty %}
-          <div class="text-sm text-slate-500">No data added yet.</div>
         {% endfor %}
       </div>
-    </label>
+    </div>
+    {% endif %}
     {% endfor %}
   </div>
 
@@ -118,10 +84,6 @@
           class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
           data-editable-text="1"
         >
-        <div class="text-tools">
-          <button type="button" class="text-tool-btn" data-case-mode="capitalize">Aa</button>
-          <button type="button" class="text-tool-btn" data-case-mode="upper">UPPER</button>
-        </div>
         {% if row.kind != 'Data' %}
         <input
           type="file"
@@ -130,10 +92,7 @@
         >
         {% endif %}
       </div>
-      <label class="text-xs font-semibold text-slate-700">
-        <input type="checkbox" name="{{ row.checkbox_name }}" value="1" {% if row.checked %}checked{% endif %} data-extra-doc-checkbox>
-        Select
-      </label>
+      <div></div>
     </div>
     {% endfor %}
   </div>
@@ -204,43 +163,6 @@
 </form>
 <script>
   (function () {
-    const allTickBtn = document.getElementById("allTickBtn");
-    const allUntickBtn = document.getElementById("allUntickBtn");
-
-    function setAll(selector, checked) {
-      document.querySelectorAll(selector).forEach((el) => { el.checked = checked; });
-    }
-
-    if (allTickBtn) {
-      allTickBtn.addEventListener("click", function () {
-        setAll('[data-step-checkbox]', true);
-        setAll('[data-field-checkbox]', true);
-        setAll('[data-extra-doc-checkbox]', true);
-      });
-    }
-    if (allUntickBtn) {
-      allUntickBtn.addEventListener("click", function () {
-        setAll('[data-step-checkbox]', false);
-        setAll('[data-field-checkbox]', false);
-        setAll('[data-extra-doc-checkbox]', false);
-      });
-    }
-
-    document.querySelectorAll("[data-step-box]").forEach((box) => {
-      const stepCb = box.querySelector("[data-step-checkbox]");
-      const fields = box.querySelectorAll("[data-field-checkbox]");
-      if (!stepCb) return;
-      stepCb.addEventListener("change", function () {
-        fields.forEach((f) => { f.checked = stepCb.checked; });
-      });
-      fields.forEach((f) => {
-        f.addEventListener("change", function () {
-          const anyChecked = Array.from(fields).some((x) => x.checked);
-          stepCb.checked = anyChecked;
-        });
-      });
-    });
-
     const consentData = document.getElementById("consentDataUsage");
     const consentUser = document.getElementById("consentUserResponsibility");
     const consentError = document.getElementById("consentError");
@@ -299,28 +221,6 @@
         setTimeout(() => form.submit(), 500);
       });
     }
-
-    function toTitleCase(value) {
-      return (value || "").replace(/\w\S*/g, function (txt) {
-        return txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase();
-      });
-    }
-    document.querySelectorAll(".text-tools .text-tool-btn").forEach((btn) => {
-      btn.addEventListener("click", function () {
-        const wrap = btn.closest(".row-value");
-        if (!wrap) return;
-        const input = wrap.querySelector("input[data-editable-text='1']");
-        if (!input) return;
-        const mode = btn.dataset.caseMode;
-        const current = input.value || "";
-        if (mode === "upper") {
-          input.value = current.toUpperCase();
-        } else {
-          input.value = toTitleCase(current);
-        }
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-    });
 
   })();
 </script>
