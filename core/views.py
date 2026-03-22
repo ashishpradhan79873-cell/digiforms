@@ -93,6 +93,7 @@ PROFILE_DATA_STEPS = [
     ("academic", "Academic Details"),
     ("college", "College Details"),
     ("bank", "Bank Details"),
+    ("subject", "Subject Details"),
     ("documents", "Document Upload"),
 ]
 
@@ -237,6 +238,12 @@ def _build_requested_profile_rows(step_data, required_profile_fields):
             (["passingyear"], ["passingyear"]),
             (["rollnumber"], ["twelfthrollnumber", "tenthrollnumber", "rollnumber"]),
             (["marks", "percentage"], ["twelfthpercentage", "tenthpercentage", "marks"]),
+            (["10thsubjects", "tenthsubjects"], ["tenthsubjects"]),
+            (["12thsubjects", "twelfthsubjects"], ["twelfthsubjects"]),
+            (["currentcourse", "course"], ["currentcoursename", "course"]),
+            (["currentyear"], ["currentyear"]),
+            (["currentsemester", "semester"], ["currentsemester"]),
+            (["currentsubject", "mysubject", "currentsubjects"], ["currentsubjects"]),
             (["collegename"], ["collegename"]),
             (["subjectgroup"], ["subjectgroup", "course"]),
         ]
@@ -593,6 +600,16 @@ def _profile_step_data(profile):
             ("Branch", profile.branch_name),
             ("Aadhaar Linked", profile.aadhaar_linked),
         ],
+        "subject": [
+            ("10th Subjects", profile.tenth_subjects),
+            ("12th Subjects", profile.twelfth_subjects),
+            ("Previous Course", profile.previous_course_name),
+            ("Previous Year Subjects", profile.previous_subjects),
+            ("Current Course", profile.current_course_name),
+            ("Current Year", profile.current_year),
+            ("Current Semester", profile.current_semester),
+            ("My Current Subjects", profile.current_subjects),
+        ],
         "documents": (
             [("Passport Photo", profile.photo.url)] if profile.photo else []
         )
@@ -604,6 +621,7 @@ def _profile_step_data(profile):
     _append_extra_rows(step_data["academic"], profile.academic_extra_rows)
     _append_extra_rows(step_data["college"], profile.college_extra_rows)
     _append_extra_rows(step_data["bank"], profile.bank_extra_rows)
+    _append_extra_rows(step_data["subject"], profile.subject_extra_rows)
     return step_data
 
 
@@ -764,6 +782,19 @@ MASTER_FIELD_MAP = {
         "branchname": "branch_name",
         "aadhaarlinked": "aadhaar_linked",
     },
+    "subject": {
+        "10thsubjects": "tenth_subjects",
+        "12thsubjects": "twelfth_subjects",
+        "previouscourse": "previous_course_name",
+        "previouscoursename": "previous_course_name",
+        "previousyearsubjects": "previous_subjects",
+        "currentsubjects": "current_subjects",
+        "mycurrentsubjects": "current_subjects",
+        "currentcourse": "current_course_name",
+        "currentcoursename": "current_course_name",
+        "currentyear": "current_year",
+        "currentsemester": "current_semester",
+    },
 }
 
 
@@ -775,6 +806,7 @@ def _save_payload_to_master_data(profile, payload):
         "academic": "academic_extra_rows",
         "college": "college_extra_rows",
         "bank": "bank_extra_rows",
+        "subject": "subject_extra_rows",
     }
 
     for section, field_map in MASTER_FIELD_MAP.items():
@@ -1507,6 +1539,8 @@ def confirm_send_to_admin(request):
             for idx, row in enumerate(rows):
                 label = row[0]
                 current_value = row[1] or ""
+                if request.POST.get(f"select__{step_key}__{idx}") != "1":
+                    continue
                 posted_value = request.POST.get(f"field__{step_key}__{idx}", current_value)
                 out_rows.append({"label": label, "value": posted_value})
             if out_rows:
@@ -1514,6 +1548,8 @@ def confirm_send_to_admin(request):
                 selected_steps.append(step_key)
         selected_vac_docs = []
         for row in required_doc_rows:
+            if request.POST.get(row["checkbox_name"]) != "1":
+                continue
             posted_value = request.POST.get(row["input_name"], row.get("value", "") or "").strip()
             uploaded = request.FILES.get(row["file_input_name"])
             if uploaded:

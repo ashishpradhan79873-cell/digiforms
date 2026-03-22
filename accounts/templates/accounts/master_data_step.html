@@ -139,6 +139,8 @@
   #college-table-wrap .action-col,
   #bank-table-wrap .action-head,
   #bank-table-wrap .action-col,
+  #subject-table-wrap .action-head,
+  #subject-table-wrap .action-col,
   #doc-table-wrap .action-head,
   #doc-table-wrap .action-col { display:none; }
   #address-table-wrap.show-action .action-head,
@@ -149,6 +151,8 @@
   #college-table-wrap.show-action .action-col,
   #bank-table-wrap.show-action .action-head,
   #bank-table-wrap.show-action .action-col,
+  #subject-table-wrap.show-action .action-head,
+  #subject-table-wrap.show-action .action-col,
   #doc-table-wrap.show-action .action-head,
   #doc-table-wrap.show-action .action-col { display:table-cell; }
 
@@ -156,6 +160,24 @@
   .doc-preview-large { width:140px; height:140px; }
   .file-meta { display:flex; flex-direction:column; gap:4px; }
   .file-name { font-size:12px; color:#475569; word-break:break-all; }
+  .subject-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .subject-card { border:1px solid #dbe3ef; border-radius:16px; background:#fbfcff; padding:16px; }
+  .subject-label { display:block; font-size:14px; font-weight:800; color:#0f172a; margin-bottom:8px; }
+  .subject-stack { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+  .subject-hero { margin-bottom:16px; padding:18px 2px 8px; }
+  .subject-step-text { font-size:12px; font-weight:900; letter-spacing:.08em; color:#2563eb; text-transform:uppercase; }
+  .subject-progress-line { margin-top:12px; height:8px; border-radius:999px; background:#dbe7fb; overflow:hidden; }
+  .subject-progress-fill { height:100%; width:85%; border-radius:999px; background:#2563eb; }
+  .subject-mini-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .subject-block-title { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:15px; font-weight:900; color:#0f172a; margin-bottom:12px; }
+  .subject-badge { font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; }
+  .subject-table-head { display:grid; grid-template-columns:1fr 88px; gap:12px; margin-bottom:8px; padding:0 2px; font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase; }
+  .subject-row { display:grid; grid-template-columns:1fr 88px; gap:12px; margin-bottom:12px; }
+  .subject-row .input { border-radius:14px; padding:12px 14px; background:#fff; }
+  .subject-add-btn { width:100%; border:2px dashed #d7e5fb; border-radius:14px; background:#fff; color:#64748b; padding:12px 14px; font-size:14px; font-weight:800; }
+  .subject-add-btn:hover { border-color:#93c5fd; color:#1d4ed8; background:#f8fbff; }
+  .subject-note { margin-top:16px; border:1px solid #cfe0ff; background:#edf5ff; border-radius:16px; padding:14px 16px; color:#1d4ed8; font-size:13px; font-weight:700; }
+  .subject-extra-wrap { margin-top:16px; }
 
   @media (max-width: 1024px) {
     .layout-wrap { grid-template-columns: 1fr; }
@@ -163,6 +185,8 @@
     .span2 { grid-column: span 1; }
     .panel { padding: 18px; }
     .card-title { font-size: 24px; }
+    .subject-grid { grid-template-columns:1fr; }
+    .subject-stack { grid-template-columns:1fr; }
   }
   @media (max-width: 640px) {
     .layout-wrap { grid-template-columns: 1fr; }
@@ -180,6 +204,8 @@
     .card-title { font-size: 19px; }
     .card-body { padding: 12px 14px; }
     .input, .select, .textarea { font-size: 13px; padding: 8px 9px; }
+    .subject-mini-grid { grid-template-columns:1fr 1fr; gap:10px; }
+    .subject-row { grid-template-columns:1fr 84px; gap:10px; }
     .mini-table tr { margin-bottom:14px; }
     .mini-table td:first-child { font-size:12px; margin-bottom:6px; }
     .mini-table .input, .mini-table .select, .mini-table .textarea { font-size:13px; padding:12px 14px; }
@@ -202,7 +228,7 @@
     <nav class="p-4 space-y-2">
       {% for step in steps %}
       <a href="{% url step.url_name %}" class="nav-link {% if step.active %}active{% endif %}">
-        <span class="material-symbols-outlined text-lg">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% else %}table{% endif %}</span>
+        <span class="material-symbols-outlined text-lg">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% elif step.key == 'subject' %}menu_book{% else %}table{% endif %}</span>
         <span class="text-[18px]">{{ step.label }}</span>
       </a>
       {% endfor %}
@@ -228,7 +254,7 @@
       <div id="stepMenu" class="step-menu">
         {% for step in steps %}
           <a href="{% url step.url_name %}" class="step-menu-link {% if step.active %}active{% endif %}">
-            <span class="material-symbols-outlined" style="font-size:17px;">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% else %}table{% endif %}</span>
+            <span class="material-symbols-outlined" style="font-size:17px;">{% if step.key == 'personal' %}person{% elif step.key == 'address' %}location_on{% elif step.key == 'academic' %}school{% elif step.key == 'college' %}apartment{% elif step.key == 'bank' %}account_balance{% elif step.key == 'subject' %}menu_book{% else %}table{% endif %}</span>
             {{ step.label }}
           </a>
         {% endfor %}
@@ -276,7 +302,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -313,7 +339,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -347,7 +373,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -379,7 +405,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -412,14 +438,121 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Continue</button></div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+      </form>
+      {% endif %}
+
+      {% if current_step == 'subject' %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="card-body">
+          <div class="subject-hero">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="subject-step-text">Step 6 of 7</div>
+                <div class="mt-1 text-[32px] font-black leading-none text-slate-900">Subject Details</div>
+              </div>
+              <div class="pt-6 text-xl font-black text-blue-600">85%</div>
+            </div>
+            <div class="subject-progress-line"><div class="subject-progress-fill"></div></div>
+          </div>
+
+          <div class="subject-grid">
+            <div class="subject-card">
+              <div class="subject-block-title">
+                <span>Current Qualification</span>
+                <span class="subject-badge">Course</span>
+              </div>
+              <label class="subject-label">Degree / Course Name</label>
+              <input class="input" type="text" name="current_course_name" value="{{ profile.current_course_name }}" placeholder="e.g. B.Tech Computer Science">
+              <div class="subject-mini-grid mt-4">
+                <div>
+                  <label class="subject-label">Current Year</label>
+                  <input class="input" type="text" name="current_year" value="{{ profile.current_year }}" placeholder="1st Year">
+                </div>
+                <div>
+                  <label class="subject-label">Semester</label>
+                  <input class="input" type="text" name="current_semester" value="{{ profile.current_semester }}" placeholder="Sem 1">
+                </div>
+              </div>
+              <div class="mt-4">
+                <label class="subject-label">My Current Subjects</label>
+                <textarea id="current-subjects-hidden" class="hidden" name="current_subjects">{{ profile.current_subjects }}</textarea>
+                <div id="current-subject-list"></div>
+                <button type="button" id="add-current-subject-btn" class="subject-add-btn mt-2">+ Add Subject</button>
+              </div>
+            </div>
+
+            <div class="subject-card">
+              <div class="subject-block-title">
+                <span>Previous Year Qualification</span>
+                <span class="subject-badge">Previous</span>
+              </div>
+              <label class="subject-label">Course Name</label>
+              <input class="input" type="text" name="previous_course_name" value="{{ profile.previous_course_name }}" placeholder="e.g. BCA 1st Year / Previous Course">
+              <div class="mt-4">
+                <label class="subject-label">Subjects With Percentage</label>
+                <textarea id="previous-subjects-hidden" class="hidden" name="previous_subjects">{{ profile.previous_subjects }}</textarea>
+                <div class="subject-table-head"><span>Subject Name</span><span>Marks (%)</span></div>
+                <div id="previous-subject-list"></div>
+                <button type="button" id="add-previous-subject-btn" class="subject-add-btn mt-2">+ Add Subject</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="subject-stack">
+            <div class="subject-card">
+              <div class="subject-block-title">
+                <span>Class 10th Subjects</span>
+                <span class="subject-badge">Secondary</span>
+              </div>
+              <textarea id="tenth-subjects-hidden" class="hidden" name="tenth_subjects">{{ profile.tenth_subjects }}</textarea>
+              <div class="subject-table-head"><span>Subject Name</span><span>Marks (%)</span></div>
+              <div id="tenth-subject-list"></div>
+              <button type="button" id="add-tenth-subject-btn" class="subject-add-btn">+ Add Subject</button>
+            </div>
+            <div class="subject-card">
+              <div class="subject-block-title">
+                <span>Class 12th Subjects</span>
+                <span class="subject-badge">Higher Secondary</span>
+              </div>
+              <textarea id="twelfth-subjects-hidden" class="hidden" name="twelfth_subjects">{{ profile.twelfth_subjects }}</textarea>
+              <div class="subject-table-head"><span>Subject Name</span><span>Marks (%)</span></div>
+              <div id="twelfth-subject-list"></div>
+              <button type="button" id="add-twelfth-subject-btn" class="subject-add-btn">+ Add Subject</button>
+            </div>
+          </div>
+
+          <div class="subject-note">
+            Please ensure all subjects and marks match your official marksheets. Current subjects me marks ki zarurat nahi hai, lekin previous course me subject + percentage fill kar sakte ho.
+          </div>
+
+          <div id="subject-table-wrap" class="mini-box mt-4 subject-extra-wrap">
+            <table class="mini-table">
+              <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
+              <tbody id="subject-table">
+                {% for field in admin_text_fields %}
+                <tr><td>{{ field.label }}</td><td><input class="input" type="text" name="subject_admin_value__{{ field.id }}" value="{{ field.value }}"></td><td class="action-col text-center">Admin</td></tr>
+                {% endfor %}
+                {% for row in subject_extra_rows %}
+                <tr class="subject-extra-row"><td><input class="input" type="text" name="subject_extra_label[]" value="{{ row.label }}"><input type="hidden" name="subject_extra_permanent[]" value="0"></td><td><input class="input" type="text" name="subject_extra_value[]" value="{{ row.value }}"></td><td class="action-col text-center"><button type="button" class="remove-subject-row btn-danger">Remove</button></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="row-actions">
+              <button type="button" id="add-subject-row-btn" class="btn-soft">+ Add Row</button>
+              <button type="button" id="remove-subject-row-btn" class="btn-danger">Remove Row</button>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
       {% if current_step == 'documents' %}
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 6: Document Upload</div></div>
+        <div class="card-head"><div class="card-title">Section 7: Document Upload</div></div>
         <div class="card-body">
           <div id="doc-table-wrap" class="mini-box">
             <table class="mini-table">
@@ -479,6 +612,7 @@
     'academic-table': { wrapId: 'academic-table-wrap', rowClass: 'academic-extra-row', removeBtnId: 'remove-academic-row-btn' },
     'college-table': { wrapId: 'college-table-wrap', rowClass: 'college-extra-row', removeBtnId: 'remove-college-row-btn' },
     'bank-table': { wrapId: 'bank-table-wrap', rowClass: 'bank-extra-row', removeBtnId: 'remove-bank-row-btn' },
+    'subject-table': { wrapId: 'subject-table-wrap', rowClass: 'subject-extra-row', removeBtnId: 'remove-subject-row-btn' },
     'doc-extra-table': { wrapId: 'doc-table-wrap', rowClass: 'doc-extra-row', removeBtnId: 'remove-doc-row-btn' },
   };
 
@@ -536,6 +670,7 @@
   attachAddRowHandler('add-academic-row-btn', 'academic-table', 'academic_extra_label', 'academic_extra_value', 'academic_extra_permanent', 'remove-academic-row', false);
   attachAddRowHandler('add-college-row-btn', 'college-table', 'college_extra_label', 'college_extra_value', 'college_extra_permanent', 'remove-college-row', false);
   attachAddRowHandler('add-bank-row-btn', 'bank-table', 'bank_extra_label', 'bank_extra_value', 'bank_extra_permanent', 'remove-bank-row', false);
+  attachAddRowHandler('add-subject-row-btn', 'subject-table', 'subject_extra_label', 'subject_extra_value', 'subject_extra_permanent', 'remove-subject-row', false);
   attachAddRowHandler('add-doc-row-btn', 'doc-extra-table', '', '', '', 'remove-doc-row', true);
 
   Object.keys(tableMeta).forEach((tableId) => {
@@ -584,6 +719,113 @@
   }
 
   bindFilePreviewHandlers();
+
+  function parseSubjectPairs(raw) {
+    return String(raw || '').split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+      const parts = line.split('|');
+      return { subject: (parts[0] || '').trim(), marks: (parts[1] || '').trim() };
+    });
+  }
+
+  function syncSubjectPairs(hiddenId, listId) {
+    const hidden = document.getElementById(hiddenId);
+    const list = document.getElementById(listId);
+    if (!hidden || !list) return;
+    const rows = [];
+    list.querySelectorAll('.subject-row').forEach((row) => {
+      const subject = (row.querySelector('[data-subject-name]') || {}).value || '';
+      const marks = (row.querySelector('[data-subject-marks]') || {}).value || '';
+      if (subject.trim() || marks.trim()) rows.push(subject.trim() + '|' + marks.trim());
+    });
+    hidden.value = rows.join('\n');
+  }
+
+  function syncCurrentSubjects() {
+    const hidden = document.getElementById('current-subjects-hidden');
+    const list = document.getElementById('current-subject-list');
+    if (!hidden || !list) return;
+    const rows = [];
+    list.querySelectorAll('.subject-row').forEach((row) => {
+      const subject = (row.querySelector('[data-current-subject]') || {}).value || '';
+      if (subject.trim()) rows.push(subject.trim());
+    });
+    hidden.value = rows.join('\n');
+  }
+
+  function createSubjectRow(subject, marks, mode) {
+    const row = document.createElement('div');
+    row.className = 'subject-row';
+    if (mode === 'current') {
+      row.style.gridTemplateColumns = '1fr';
+      row.innerHTML = '<input class="input" type="text" data-current-subject placeholder="Subject name" value="' + (subject || '') + '">';
+      row.querySelector('[data-current-subject]').addEventListener('input', syncCurrentSubjects);
+    } else {
+      const hiddenId = mode === 'tenth' ? 'tenth-subjects-hidden' : (mode === 'twelfth' ? 'twelfth-subjects-hidden' : 'previous-subjects-hidden');
+      const listId = mode === 'tenth' ? 'tenth-subject-list' : (mode === 'twelfth' ? 'twelfth-subject-list' : 'previous-subject-list');
+      row.innerHTML =
+        '<input class="input" type="text" data-subject-name placeholder="Subject name" value="' + (subject || '') + '">' +
+        '<input class="input" type="text" data-subject-marks placeholder="00" value="' + (marks || '') + '">';
+      row.querySelector('[data-subject-name]').addEventListener('input', function () {
+        syncSubjectPairs(hiddenId, listId);
+      });
+      row.querySelector('[data-subject-marks]').addEventListener('input', function () {
+        syncSubjectPairs(hiddenId, listId);
+      });
+    }
+    return row;
+  }
+
+  function initSubjectBuilder() {
+    const tenthHidden = document.getElementById('tenth-subjects-hidden');
+    const twelfthHidden = document.getElementById('twelfth-subjects-hidden');
+    const currentHidden = document.getElementById('current-subjects-hidden');
+    const previousHidden = document.getElementById('previous-subjects-hidden');
+    if (!tenthHidden || !twelfthHidden || !currentHidden || !previousHidden) return;
+
+    const tenthList = document.getElementById('tenth-subject-list');
+    const twelfthList = document.getElementById('twelfth-subject-list');
+    const currentList = document.getElementById('current-subject-list');
+    const previousList = document.getElementById('previous-subject-list');
+
+    parseSubjectPairs(tenthHidden.value).forEach((item) => tenthList.appendChild(createSubjectRow(item.subject, item.marks, 'tenth')));
+    parseSubjectPairs(twelfthHidden.value).forEach((item) => twelfthList.appendChild(createSubjectRow(item.subject, item.marks, 'twelfth')));
+    parseSubjectPairs(previousHidden.value).forEach((item) => previousList.appendChild(createSubjectRow(item.subject, item.marks, 'previous')));
+    String(currentHidden.value || '').split('\n').map((line) => line.trim()).filter(Boolean).forEach((item) => currentList.appendChild(createSubjectRow(item, '', 'current')));
+
+    if (!tenthList.children.length) tenthList.appendChild(createSubjectRow('', '', 'tenth'));
+    if (!twelfthList.children.length) twelfthList.appendChild(createSubjectRow('', '', 'twelfth'));
+    if (!previousList.children.length) previousList.appendChild(createSubjectRow('', '', 'previous'));
+    if (!currentList.children.length) currentList.appendChild(createSubjectRow('', '', 'current'));
+
+    const addTenth = document.getElementById('add-tenth-subject-btn');
+    const addTwelfth = document.getElementById('add-twelfth-subject-btn');
+    const addPrevious = document.getElementById('add-previous-subject-btn');
+    const addCurrent = document.getElementById('add-current-subject-btn');
+
+    if (addTenth) addTenth.addEventListener('click', function () {
+      tenthList.appendChild(createSubjectRow('', '', 'tenth'));
+      syncSubjectPairs('tenth-subjects-hidden', 'tenth-subject-list');
+    });
+    if (addTwelfth) addTwelfth.addEventListener('click', function () {
+      twelfthList.appendChild(createSubjectRow('', '', 'twelfth'));
+      syncSubjectPairs('twelfth-subjects-hidden', 'twelfth-subject-list');
+    });
+    if (addPrevious) addPrevious.addEventListener('click', function () {
+      previousList.appendChild(createSubjectRow('', '', 'previous'));
+      syncSubjectPairs('previous-subjects-hidden', 'previous-subject-list');
+    });
+    if (addCurrent) addCurrent.addEventListener('click', function () {
+      currentList.appendChild(createSubjectRow('', '', 'current'));
+      syncCurrentSubjects();
+    });
+
+    syncSubjectPairs('tenth-subjects-hidden', 'tenth-subject-list');
+    syncSubjectPairs('twelfth-subjects-hidden', 'twelfth-subject-list');
+    syncSubjectPairs('previous-subjects-hidden', 'previous-subject-list');
+    syncCurrentSubjects();
+  }
+
+  initSubjectBuilder();
 
   const stepMenuBtn = document.getElementById('stepMenuToggle');
   const stepMenu = document.getElementById('stepMenu');

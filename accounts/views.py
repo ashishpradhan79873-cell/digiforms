@@ -24,6 +24,7 @@ STEPS = [
     ("academic", "Academic Details", "master_data_academic"),
     ("college", "College Details", "master_data_college"),
     ("bank", "Bank Details", "master_data_bank"),
+    ("subject", "Subject Details", "master_data_subject"),
     ("documents", "Document Upload", "master_data_documents"),
 ]
 
@@ -42,6 +43,7 @@ STEP_EXTRA_META = {
     "academic": ("academic_extra_label[]", "academic_extra_value[]", "academic_extra_permanent[]", "academic_extra_rows"),
     "college": ("college_extra_label[]", "college_extra_value[]", "college_extra_permanent[]", "college_extra_rows"),
     "bank": ("bank_extra_label[]", "bank_extra_value[]", "bank_extra_permanent[]", "bank_extra_rows"),
+    "subject": ("subject_extra_label[]", "subject_extra_value[]", "subject_extra_permanent[]", "subject_extra_rows"),
 }
 
 MASK_AFTER_HOURS = 24
@@ -99,6 +101,7 @@ def _mask_profile_for_display(profile):
         "tenth_board", "tenth_roll_number", "tenth_percentage", "tenth_result",
         "twelfth_board", "twelfth_roll_number", "twelfth_percentage", "twelfth_result", "graduation",
         "college_name", "university_name", "course", "year_semester", "enrollment_number",
+        "tenth_subjects", "twelfth_subjects", "previous_course_name", "previous_subjects", "current_course_name", "current_year", "current_semester", "current_subjects",
         "account_holder_name", "bank_name", "account_number", "ifsc_code", "branch_name",
     ]
     for field_name in text_fields:
@@ -110,6 +113,7 @@ def _mask_profile_for_display(profile):
         "academic_extra_rows",
         "college_extra_rows",
         "bank_extra_rows",
+        "subject_extra_rows",
     ]:
         current = getattr(profile, list_field, []) or []
         masked_rows = []
@@ -282,6 +286,7 @@ def _step_context(profile, current_step_key):
         "academic": _step_extra_values_map(profile.academic_extra_rows),
         "college": _step_extra_values_map(profile.college_extra_rows),
         "bank": _step_extra_values_map(profile.bank_extra_rows),
+        "subject": _step_extra_values_map(profile.subject_extra_rows),
     }
     admin_text_fields = []
     if current_step_key in extra_maps:
@@ -327,6 +332,7 @@ def _step_context(profile, current_step_key):
         "academic_extra_rows": profile.academic_extra_rows or [],
         "college_extra_rows": profile.college_extra_rows or [],
         "bank_extra_rows": profile.bank_extra_rows or [],
+        "subject_extra_rows": profile.subject_extra_rows or [],
         "admin_text_fields": admin_text_fields,
         "masking_active": masking_active,
         "reveal_active": reveal_active,
@@ -414,7 +420,8 @@ def _document_file_info(profile, title):
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect("master_data_documents")
+        request.session.pop("pending_form_apply", None)
+        return redirect("master_data_option")
     if request.method == "POST":
         user = authenticate(
             request,
@@ -424,9 +431,7 @@ def login_view(request):
         if user:
             login(request, user)
             UserProfile.objects.get_or_create(user=user)
-            profile = UserProfile.objects.filter(user=user).first()
-            if profile and profile.full_name:
-                return redirect("role_select")
+            request.session.pop("pending_form_apply", None)
             return redirect("master_data_option")
         messages.error(request, "Username ya Password galat hai!")
     return render(request, "accounts/login.html")
@@ -434,7 +439,7 @@ def login_view(request):
 
 def register_view(request):
     if request.user.is_authenticated:
-        return redirect("master_data_documents")
+        return redirect("master_data_option")
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         mobile = request.POST.get("mobile", "").strip()
@@ -978,7 +983,7 @@ def master_data_personal_view(request):
         profile.personal_extra_rows = _merge_admin_and_custom_rows(request, "personal", profile)
         profile.save()
         _mark_master_data_saved(profile)
-        return redirect("master_data_address")
+        return redirect("master_data_personal")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "personal"))
 
 
@@ -1015,7 +1020,7 @@ def master_data_address_view(request):
         profile.address_extra_rows = _merge_admin_and_custom_rows(request, "address", profile)
         profile.save()
         _mark_master_data_saved(profile)
-        return redirect("master_data_academic")
+        return redirect("master_data_address")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "address"))
 
 
@@ -1038,7 +1043,7 @@ def master_data_academic_view(request):
         profile.academic_extra_rows = _merge_admin_and_custom_rows(request, "academic", profile)
         profile.save()
         _mark_master_data_saved(profile)
-        return redirect("master_data_college")
+        return redirect("master_data_academic")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "academic"))
 
 
@@ -1058,7 +1063,7 @@ def master_data_college_view(request):
         profile.college_extra_rows = _merge_admin_and_custom_rows(request, "college", profile)
         profile.save()
         _mark_master_data_saved(profile)
-        return redirect("master_data_bank")
+        return redirect("master_data_college")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "college"))
 
 
@@ -1078,8 +1083,30 @@ def master_data_bank_view(request):
         profile.bank_extra_rows = _merge_admin_and_custom_rows(request, "bank", profile)
         profile.save()
         _mark_master_data_saved(profile)
-        return redirect("master_data_documents")
+        return redirect("master_data_bank")
     return render(request, "accounts/master_data_step.html", _step_context(profile, "bank"))
+
+
+@login_required
+def master_data_subject_view(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == "POST":
+        if _reject_if_masked_post(request, profile):
+            return redirect("master_data_documents")
+        p = request.POST
+        profile.tenth_subjects = p.get("tenth_subjects", "")
+        profile.twelfth_subjects = p.get("twelfth_subjects", "")
+        profile.previous_course_name = p.get("previous_course_name", "")
+        profile.previous_subjects = p.get("previous_subjects", "")
+        profile.current_course_name = p.get("current_course_name", "")
+        profile.current_year = p.get("current_year", "")
+        profile.current_semester = p.get("current_semester", "")
+        profile.current_subjects = p.get("current_subjects", "")
+        profile.subject_extra_rows = _merge_admin_and_custom_rows(request, "subject", profile)
+        profile.save()
+        _mark_master_data_saved(profile)
+        return redirect("master_data_subject")
+    return render(request, "accounts/master_data_step.html", _step_context(profile, "subject"))
 
 
 @login_required

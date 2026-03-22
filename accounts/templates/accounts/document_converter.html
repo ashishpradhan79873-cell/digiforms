@@ -21,15 +21,30 @@
   .result { border:1px solid #dbe3ef; border-radius:12px; background:#f8fafc; padding:10px; font-size:12px; color:#334155; }
   .crop-wrap { display:flex; justify-content:center; }
   .crop-stage { width:100%; max-width:430px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; display:block; touch-action:none; }
+  .busy-overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
+  .busy-overlay.show { display:flex; }
+  .busy-card { width:min(92vw, 360px); border-radius:18px; background:#fff; border:1px solid #dbe3ef; box-shadow:0 24px 48px rgba(15,23,42,.18); padding:20px; text-align:center; }
+  .busy-spinner { width:42px; height:42px; margin:0 auto 12px; border-radius:999px; border:4px solid #dbeafe; border-top-color:#2563eb; animation:spin .9s linear infinite; }
+  .busy-title { font-size:15px; font-weight:900; color:#0f172a; }
+  .busy-sub { margin-top:6px; font-size:12px; color:#475569; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .preview { width:100%; max-height:220px; object-fit:contain; border:1px solid #dbe3ef; border-radius:8px; background:#fff; }
   @media (max-width: 640px) {
     .card { border-radius:10px; }
     .btn, .tab-btn { width:100%; text-align:center; }
     .crop-wrap { width:100%; }
-    .crop-stage { max-width:none; min-height:280px; }
+    .crop-stage { max-width:none; min-height:320px; }
     .preview { max-height:none; }
   }
 </style>
+
+<div id="busyOverlay" class="busy-overlay">
+  <div class="busy-card">
+    <div class="busy-spinner"></div>
+    <div id="busyTitle" class="busy-title">Processing...</div>
+    <div id="busySub" class="busy-sub">Please wait</div>
+  </div>
+</div>
 
 <div class="mb-3 flex justify-end">
   <a href="{% url 'master_data_option' %}" class="btn btn-soft">Back</a>
@@ -156,9 +171,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
   const csrfToken = "{{ csrf_token }}";
+  const busyOverlay = document.getElementById("busyOverlay");
+  const busyTitle = document.getElementById("busyTitle");
+  const busySub = document.getElementById("busySub");
 
   function bytesToKb(bytes) {
     return (bytes / 1024).toFixed(2);
+  }
+  function setBusy(active, title, sub) {
+    if (!busyOverlay) return;
+    busyOverlay.classList.toggle("show", !!active);
+    if (title && busyTitle) busyTitle.textContent = title;
+    if (sub && busySub) busySub.textContent = sub;
   }
   function setResult(id, text, isError) {
     const el = document.getElementById(id);
@@ -216,27 +240,34 @@
       const fd = new FormData();
       files.forEach((f) => fd.append("images", f));
       setResult("imgPdfResult", "Processing...", false);
-      const resp = await fetch("{% url 'document_converter_images_to_pdf' %}", {
-        method: "POST",
-        body: fd,
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": csrfToken }
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        setResult("imgPdfResult", data.error || "PDF creation failed.", true);
-        return;
+      setBusy(true, "PDF bana rahe hain", "Photos ko single PDF me merge kiya ja raha hai...");
+      btn.disabled = true;
+      try {
+        const resp = await fetch("{% url 'document_converter_images_to_pdf' %}", {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": csrfToken }
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          setResult("imgPdfResult", data.error || "PDF creation failed.", true);
+          return;
+        }
+        const blob = await resp.blob();
+        if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+        downloadUrl = URL.createObjectURL(blob);
+        const outName = resp.headers.get("X-Output-Name") || "merged_documents.pdf";
+        downloadBtn.href = downloadUrl;
+        downloadBtn.download = outName;
+        downloadBtn.style.display = "inline-flex";
+        imgPdfFramePreview.src = downloadUrl;
+        imgPdfFramePreview.style.display = "block";
+        setResult("imgPdfResult", "Done. Output: " + outName + " | Size: " + bytesToKb(blob.size) + " KB", false);
+      } finally {
+        btn.disabled = false;
+        setBusy(false);
       }
-      const blob = await resp.blob();
-      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-      downloadUrl = URL.createObjectURL(blob);
-      const outName = resp.headers.get("X-Output-Name") || "merged_documents.pdf";
-      downloadBtn.href = downloadUrl;
-      downloadBtn.download = outName;
-      downloadBtn.style.display = "inline-flex";
-      imgPdfFramePreview.src = downloadUrl;
-      imgPdfFramePreview.style.display = "block";
-      setResult("imgPdfResult", "Done. Output: " + outName + " | Size: " + bytesToKb(blob.size) + " KB", false);
     });
 
     input.addEventListener("change", () => {
@@ -325,13 +356,29 @@
     let dragMode = "";
     let dragStart = { x: 0, y: 0, rect: null };
     const minCrop = 20;
+    let canvasCssHeight = 260;
 
     function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
+    function resizeCropCanvas() {
+      const wrap = cropCanvas.parentElement;
+      const wrapWidth = wrap ? Math.max(Math.floor(wrap.clientWidth), 220) : 430;
+      const cssWidth = Math.min(wrapWidth, 430);
+      const mobileHeight = window.innerWidth <= 640 ? Math.max(Math.round(cssWidth * 0.92), 300) : 260;
+      canvasCssHeight = mobileHeight;
+      cropCanvas.style.height = mobileHeight + "px";
+      const dpr = Math.max(window.devicePixelRatio || 1, 1);
+      cropCanvas.width = Math.round(cssWidth * dpr);
+      cropCanvas.height = Math.round(mobileHeight * dpr);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      resetCropRect();
+      draw();
+    }
     function imageBounds() {
       const x1 = Math.max(displayRect.x, 0);
       const y1 = Math.max(displayRect.y, 0);
-      const x2 = Math.min(displayRect.x + displayRect.w, cropCanvas.width);
-      const y2 = Math.min(displayRect.y + displayRect.h, cropCanvas.height);
+      const x2 = Math.min(displayRect.x + displayRect.w, cropCanvas.clientWidth);
+      const y2 = Math.min(displayRect.y + displayRect.h, canvasCssHeight);
       return { x: x1, y: y1, w: Math.max(x2 - x1, 1), h: Math.max(y2 - y1, 1) };
     }
     function resetCropRect() {
@@ -350,30 +397,32 @@
       return { left, top, right, bottom, w, h };
     }
     function draw() {
-      ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+      const canvasW = cropCanvas.clientWidth || 430;
+      const canvasH = canvasCssHeight || 260;
+      ctx.clearRect(0, 0, canvasW, canvasH);
       ctx.fillStyle = "#eef2ff";
-      ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+      ctx.fillRect(0, 0, canvasW, canvasH);
       if (!img) {
         ctx.fillStyle = "#334155";
         ctx.font = "14px Arial";
         ctx.fillText("Photo select karo", 16, 26);
         return;
       }
-      const canvasRatio = cropCanvas.width / cropCanvas.height;
+      const canvasRatio = canvasW / canvasH;
       const imgRatio = naturalW / naturalH;
       if (imgRatio > canvasRatio) {
-        displayRect.w = cropCanvas.width;
+        displayRect.w = canvasW;
         displayRect.h = Math.round(displayRect.w / imgRatio);
         displayRect.x = 0;
-        displayRect.y = Math.round((cropCanvas.height - displayRect.h) / 2);
+        displayRect.y = Math.round((canvasH - displayRect.h) / 2);
       } else {
-        displayRect.h = cropCanvas.height;
+        displayRect.h = canvasH;
         displayRect.w = Math.round(displayRect.h * imgRatio);
         displayRect.y = 0;
-        displayRect.x = Math.round((cropCanvas.width - displayRect.w) / 2);
+        displayRect.x = Math.round((canvasW - displayRect.w) / 2);
       }
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+      ctx.fillRect(0, 0, canvasW, canvasH);
       ctx.drawImage(img, displayRect.x, displayRect.y, displayRect.w, displayRect.h);
       ctx.strokeStyle = "#16a34a";
       ctx.lineWidth = 2;
@@ -397,7 +446,9 @@
       const rect = cropCanvas.getBoundingClientRect();
       const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
       const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-      return { x: clientX - rect.left, y: clientY - rect.top };
+      const scaleX = (cropCanvas.clientWidth || rect.width || 1) / Math.max(rect.width, 1);
+      const scaleY = (canvasCssHeight || rect.height || 1) / Math.max(rect.height, 1);
+      return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
     }
     function inHandle(p, x, y, r) {
       return Math.abs(p.x - x) <= r && Math.abs(p.y - y) <= r;
@@ -477,6 +528,7 @@
         img = image;
         naturalW = image.width;
         naturalH = image.height;
+        resizeCropCanvas();
         draw();
         resetCropRect();
         draw();
@@ -499,6 +551,7 @@
     cropCanvas.addEventListener("touchstart", onPointerDown, { passive: false });
     cropCanvas.addEventListener("touchmove", onPointerMove, { passive: false });
     document.addEventListener("touchend", onPointerUp);
+    window.addEventListener("resize", resizeCropCanvas);
 
     convertBtn.addEventListener("click", async () => {
       if (!selectedFile) { infoText.textContent = "Pehle photo select karo."; return; }
@@ -520,27 +573,34 @@
       fd.append("crop_w", String(s.w));
       fd.append("crop_h", String(s.h));
 
-      const resp = await fetch("{% url 'document_converter_process' %}", {
-        method: "POST",
-        body: fd,
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": csrfToken }
-      });
-      if (!resp.ok) { infoText.textContent = "Convert failed."; return; }
-      const blob = await resp.blob();
-      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-      downloadUrl = URL.createObjectURL(blob);
-      const outName = resp.headers.get("X-Output-Name") || "converted.jpg";
-      const outW = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
-      const outH = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
-      const outSize = parseInt(resp.headers.get("X-Converted-Size") || String(blob.size), 10);
-      downloadBtn.href = downloadUrl;
-      downloadBtn.download = outName;
-      downloadBtn.style.display = "inline-flex";
-      previewResult({ url: downloadUrl, name: outName, originalSize: selectedFile.size, newSize: outSize, width: outW, height: outH });
-      infoText.textContent = "Done. Target approx: " + (targetKb - 1) + " KB";
+      setBusy(true, "Photo process ho rahi hai", "Crop, resize aur compress chal raha hai...");
+      convertBtn.disabled = true;
+      try {
+        const resp = await fetch("{% url 'document_converter_process' %}", {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": csrfToken }
+        });
+        if (!resp.ok) { infoText.textContent = "Convert failed."; return; }
+        const blob = await resp.blob();
+        if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+        downloadUrl = URL.createObjectURL(blob);
+        const outName = resp.headers.get("X-Output-Name") || "converted.jpg";
+        const outW = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
+        const outH = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
+        const outSize = parseInt(resp.headers.get("X-Converted-Size") || String(blob.size), 10);
+        downloadBtn.href = downloadUrl;
+        downloadBtn.download = outName;
+        downloadBtn.style.display = "inline-flex";
+        previewResult({ url: downloadUrl, name: outName, originalSize: selectedFile.size, newSize: outSize, width: outW, height: outH });
+        infoText.textContent = "Done. Target approx: " + (targetKb - 1) + " KB";
+      } finally {
+        convertBtn.disabled = false;
+        setBusy(false);
+      }
     });
-    draw();
+    resizeCropCanvas();
   })();
 
   // Tool 3A: PDF -> Images
@@ -560,6 +620,8 @@
         return;
       }
       try {
+        btn.disabled = true;
+        setBusy(true, "PDF pages convert ho rahe hain", "Preview aur ZIP generate ki ja rahi hai...");
         setResult("pdfToImageResult", "Processing PDF pages...", false);
         previewWrap.innerHTML = "";
         const arrayBuffer = await file.arrayBuffer();
@@ -569,7 +631,7 @@
         const ext = (formatInput.value || "jpg").toLowerCase() === "png" ? "png" : "jpg";
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 2 });
+          const viewport = page.getViewport({ scale: 1.5 });
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
           canvas.width = Math.floor(viewport.width);
@@ -598,6 +660,9 @@
         setResult("pdfToImageResult", "Done. Pages: " + pdf.numPages + " | ZIP ready.", false);
       } catch (err) {
         setResult("pdfToImageResult", "PDF to image failed. Valid PDF try karo.", true);
+      } finally {
+        btn.disabled = false;
+        setBusy(false);
       }
     });
   })();

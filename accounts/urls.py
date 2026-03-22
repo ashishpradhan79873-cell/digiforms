@@ -20,5 +20,6 @@ urlpatterns = [
     path('master-data/academic/', views.master_data_academic_view, name='master_data_academic'),
     path('master-data/college/', views.master_data_college_view, name='master_data_college'),
     path('master-data/bank/', views.master_data_bank_view, name='master_data_bank'),
+    path('master-data/subject/', views.master_data_subject_view, name='master_data_subject'),
     path('master-data/documents/', views.master_data_documents_view, name='master_data_documents'),
 ]

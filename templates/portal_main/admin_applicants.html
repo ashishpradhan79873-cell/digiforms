@@ -54,8 +54,16 @@
   .compact-select { min-width:120px; border:1px solid #cbd5e1; border-radius:8px; padding:5px 7px; font-size:12px; background:#fff; }
   .overlay { position:fixed; inset:0; background:rgba(15,23,42,.58); display:none; align-items:center; justify-content:center; padding:22px; z-index:50; }
   .modal { width:min(1020px, 100%); max-height:90vh; overflow:auto; background:#fff; border-radius:16px; border:1px solid #d8dfeb; }
-  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .detail-row { border:1px solid #dbe2ee; border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; gap:10px; }
+  .overlay.modal-fullscreen { padding:0; }
+  .overlay.modal-fullscreen .modal { width:100vw; max-height:100vh; height:100vh; border-radius:0; border:none; }
+  .modal-head-tools { display:flex; align-items:center; gap:8px; }
+  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+  .detail-row { display:flex; flex-direction:column; gap:6px; }
+  .detail-label { font-size:13px; font-weight:900; color:#0f172a; }
+  .detail-value-wrap { display:flex; align-items:stretch; gap:8px; }
+  .detail-value-box { flex:1; min-height:48px; border:1px solid #c6d2e3; border-radius:12px; background:#fff; padding:12px 14px; font-size:15px; font-weight:600; color:#0f172a; box-shadow: inset 0 1px 2px rgba(15,23,42,.04); word-break:break-word; }
+  .detail-value-box.multiline { line-height:1.45; }
+  .detail-copy-btn { width:46px; min-width:46px; height:48px; border-radius:12px; }
   .doc-card { border:1px solid #dbe2ee; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .copy-btn { border:1px solid #d2dbe8; background:#fff; border-radius:8px; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; color:#334155; }
   .copy-btn .material-symbols-outlined { font-size:17px; line-height:1; }
@@ -246,7 +254,12 @@
   <div class="modal">
     <div class="p-4 border-b border-slate-200 flex items-center justify-between">
       <h3 class="text-2xl font-black">Applicant Full Details</h3>
-      <button id="closeDetail" class="btn btn-gray" type="button">Close</button>
+      <div class="modal-head-tools">
+        <button id="toggleFullscreenDetail" class="btn btn-gray" type="button">
+          <span class="material-symbols-outlined" style="font-size:16px;">open_in_full</span> Full Screen
+        </button>
+        <button id="closeDetail" class="btn btn-gray" type="button">Close</button>
+      </div>
     </div>
     <div class="p-4 space-y-4" id="detailContainer"></div>
     <div class="p-4 border-t border-slate-200 flex flex-wrap gap-2 justify-end">
@@ -262,6 +275,7 @@
 <script>
   const overlay = document.getElementById("detailOverlay");
   const closeBtn = document.getElementById("closeDetail");
+  const fullscreenBtn = document.getElementById("toggleFullscreenDetail");
   const container = document.getElementById("detailContainer");
   const copyAllBtn = document.getElementById("copyAllBtn");
   const csvBtn = document.getElementById("csvBtn");
@@ -287,7 +301,8 @@
     const safeLabel = escapeHtml(label);
     const safeValue = formatValue(value);
     const copyValue = (value || "-").toString();
-    return `<div class="detail-row"><div><div class="text-xs text-slate-500">${safeLabel}</div><div class="font-semibold">${safeValue}</div></div><button class="copy-btn" data-copy="${escapeHtml(copyValue)}" title="Copy"><span class="material-symbols-outlined">content_copy</span></button></div>`;
+    const multiline = String(value || "").includes("/") || String(value || "").includes("\n");
+    return `<div class="detail-row"><div class="detail-label">${safeLabel}</div><div class="detail-value-wrap"><div class="detail-value-box ${multiline ? 'multiline' : ''}">${safeValue}</div><button class="copy-btn detail-copy-btn" data-copy="${escapeHtml(copyValue)}" title="Copy"><span class="material-symbols-outlined">content_copy</span></button></div></div>`;
   }
 
   function sectionHtml(title, rows) {
@@ -340,6 +355,7 @@
       pdfBtn.href = btn.dataset.pdfUrl;
       extensionBtn.href = btn.dataset.extensionUrl;
       docZipBtn.href = btn.dataset.doczipUrl;
+      setFullscreenUi(false);
       overlay.style.display = "flex";
 
       container.querySelectorAll("[data-copy]").forEach((copyBtn) => {
@@ -366,8 +382,58 @@
     } catch (e) {}
   });
 
-  closeBtn.addEventListener("click", () => { overlay.style.display = "none"; });
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.style.display = "none"; });
+  function setFullscreenUi(active) {
+    overlay.classList.toggle("modal-fullscreen", active);
+    if (fullscreenBtn) {
+      fullscreenBtn.innerHTML = active
+        ? '<span class="material-symbols-outlined" style="font-size:16px;">close_fullscreen</span> Exit Full Screen'
+        : '<span class="material-symbols-outlined" style="font-size:16px;">open_in_full</span> Full Screen';
+    }
+  }
+
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener("click", async () => {
+      const isNativeFull = document.fullscreenElement === overlay || document.fullscreenElement === overlay.querySelector(".modal");
+      try {
+        if (!document.fullscreenElement) {
+          if (overlay.requestFullscreen) {
+            await overlay.requestFullscreen();
+            setFullscreenUi(true);
+            return;
+          }
+        } else if (isNativeFull && document.exitFullscreen) {
+          await document.exitFullscreen();
+          setFullscreenUi(false);
+          return;
+        }
+      } catch (err) {}
+      setFullscreenUi(!overlay.classList.contains("modal-fullscreen"));
+    });
+  }
+
+  document.addEventListener("fullscreenchange", () => {
+    const isActive = document.fullscreenElement === overlay || document.fullscreenElement === overlay.querySelector(".modal");
+    setFullscreenUi(isActive || overlay.classList.contains("modal-fullscreen"));
+    if (!document.fullscreenElement && overlay.classList.contains("modal-fullscreen")) {
+      setFullscreenUi(false);
+    }
+  });
+
+  closeBtn.addEventListener("click", async () => {
+    if (document.fullscreenElement && (document.fullscreenElement === overlay || document.fullscreenElement === overlay.querySelector(".modal")) && document.exitFullscreen) {
+      try { await document.exitFullscreen(); } catch (err) {}
+    }
+    setFullscreenUi(false);
+    overlay.style.display = "none";
+  });
+  overlay.addEventListener("click", async (e) => {
+    if (e.target !== overlay) return;
+    if (document.fullscreenElement && (document.fullscreenElement === overlay || document.fullscreenElement === overlay.querySelector(".modal")) && document.exitFullscreen) {
+      try { await document.exitFullscreen(); } catch (err) {}
+    }
+    setFullscreenUi(false);
+    overlay.style.display = "none";
+  });
 
   const liveSearchInput = document.getElementById("liveSearchInput");
   const rows = Array.from(document.querySelectorAll(".app-row"));

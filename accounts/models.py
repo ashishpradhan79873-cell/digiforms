@@ -46,6 +46,14 @@ class UserProfile(models.Model):
     twelfth_result= models.CharField(max_length=50, blank=True)
     graduation    = models.CharField(max_length=100, blank=True)
     university    = models.CharField(max_length=150, blank=True)
+    tenth_subjects = models.TextField(blank=True)
+    twelfth_subjects = models.TextField(blank=True)
+    previous_course_name = models.CharField(max_length=150, blank=True)
+    previous_subjects = models.TextField(blank=True)
+    current_course_name = models.CharField(max_length=150, blank=True)
+    current_year = models.CharField(max_length=100, blank=True)
+    current_semester = models.CharField(max_length=100, blank=True)
+    current_subjects = models.TextField(blank=True)
 
     # College details
     college_name = models.CharField(max_length=200, blank=True)
@@ -66,6 +74,7 @@ class UserProfile(models.Model):
     academic_extra_rows = models.JSONField(default=list, blank=True)
     college_extra_rows = models.JSONField(default=list, blank=True)
     bank_extra_rows = models.JSONField(default=list, blank=True)
+    subject_extra_rows = models.JSONField(default=list, blank=True)
 
     photo         = models.ImageField(upload_to='profile_photos/', null=True, blank=True)
     signature     = models.ImageField(upload_to='profile_signatures/', null=True, blank=True)
@@ -330,6 +339,7 @@ class MasterDataField(models.Model):
     STEP_ACADEMIC = "academic"
     STEP_COLLEGE = "college"
     STEP_BANK = "bank"
+    STEP_SUBJECT = "subject"
     STEP_DOCUMENTS = "documents"
     STEP_CHOICES = [
         (STEP_PERSONAL, "Personal"),
@@ -337,6 +347,7 @@ class MasterDataField(models.Model):
         (STEP_ACADEMIC, "Academic"),
         (STEP_COLLEGE, "College"),
         (STEP_BANK, "Bank"),
+        (STEP_SUBJECT, "Subject"),
         (STEP_DOCUMENTS, "Documents"),
     ]
 
