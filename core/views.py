@@ -301,6 +301,28 @@ def _merge_unique_casefold(values):
     return merged
 
 
+def _normalize_visibility_key(value):
+    return "".join(ch for ch in str(value or "").strip().lower() if ch.isalnum())
+
+
+def _vacancy_visible_to_profile(vacancy, profile):
+    allowed = getattr(vacancy, "visible_to_users", []) or []
+    if not allowed:
+        return True
+    profile_keys = {
+        _normalize_visibility_key(getattr(profile.user, "username", "")),
+        _normalize_visibility_key(getattr(profile, "full_name", "")),
+        _normalize_visibility_key(getattr(profile, "mobile", "")),
+        _normalize_visibility_key(getattr(profile, "email", "")),
+        _normalize_visibility_key(getattr(profile, "id", "")),
+        _normalize_visibility_key(getattr(profile.user, "id", "")),
+    }
+    profile_keys.discard("")
+    allowed_keys = {_normalize_visibility_key(item) for item in allowed}
+    allowed_keys.discard("")
+    return bool(profile_keys & allowed_keys)
+
+
 def _classify_bulk_requirement(section_name, field_name):
     section = str(section_name or "").strip().lower()
     field = str(field_name or "").strip()
@@ -1309,9 +1331,13 @@ def _filtered_applications(q, status):
 def student_services_dashboard(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     _seed_default_vacancies()
-    services = Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_STUDENT).order_by(
-        "display_order", "last_date", "id"
-    )
+    services = [
+        item
+        for item in Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_STUDENT).order_by(
+            "display_order", "last_date", "id"
+        )
+        if _vacancy_visible_to_profile(item, profile)
+    ]
     user_apps = Application.objects.filter(profile=profile).select_related("vacancy")
     application_map = {app.vacancy_id: app for app in user_apps}
     service_cards = []
@@ -1352,6 +1378,9 @@ def apply_student_service(request, vacancy_id):
         is_active=True,
         category=Vacancy.CATEGORY_STUDENT,
     )
+    if not _vacancy_visible_to_profile(vacancy, profile):
+        messages.error(request, "Ye student option is user ke liye active nahi hai.")
+        return redirect("student_services_dashboard")
     profile_draft = _get_profile_draft(profile, vacancy.id)
     started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
 
@@ -1372,9 +1401,13 @@ def dashboard(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
     _seed_default_vacancies()
-    vacancies = Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_GOVERNMENT).order_by(
-        "display_order", "last_date", "id"
-    )
+    vacancies = [
+        item
+        for item in Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_GOVERNMENT).order_by(
+            "display_order", "last_date", "id"
+        )
+        if _vacancy_visible_to_profile(item, profile)
+    ]
     user_apps = Application.objects.filter(profile=profile).select_related("vacancy")
     application_map = {app.vacancy_id: app for app in user_apps}
     vacancy_cards = []
@@ -1457,6 +1490,9 @@ def apply_vacancy(request, vacancy_id):
         is_active=True,
         category=Vacancy.CATEGORY_GOVERNMENT,
     )
+    if not _vacancy_visible_to_profile(vacancy, profile):
+        messages.error(request, "Ye vacancy is user ke liye active nahi hai.")
+        return redirect("dashboard")
     profile_draft = _get_profile_draft(profile, vacancy.id)
     started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
     request.session["pending_form_apply"] = {
@@ -1483,6 +1519,10 @@ def confirm_send_to_admin(request):
     lock_active = False
     timed_out_active = False
     vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
+    if not _vacancy_visible_to_profile(vacancy, profile):
+        request.session.pop("pending_form_apply", None)
+        messages.error(request, "Ye vacancy ab is user ke liye available nahi hai.")
+        return redirect("role_select")
     profile_draft = _get_profile_draft(profile, vacancy.id)
     payment_setting = _active_payment_setting()
     payment_upi_link = _upi_deep_link(payment_setting)
@@ -2585,6 +2625,8 @@ def admin_save_vacancy(request):
     icon_name = request.POST.get("icon_name", "").strip() or "description"
     display_order = request.POST.get("display_order", "0").strip() or "0"
     is_active = request.POST.get("is_active") == "on"
+    visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
+    visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
     editor_docs = _collect_doc_editor_inputs(request)
     editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
@@ -2621,6 +2663,7 @@ def admin_save_vacancy(request):
         icon_name=icon_name,
         display_order=order_val,
         is_active=is_active,
+        visible_to_users=visible_to_users,
         required_documents=required_documents,
         required_profile_fields=required_profile_fields,
     )
@@ -2707,6 +2750,7 @@ def admin_update_vacancy(request, vacancy_id):
     vacancy.icon_name = icon_name
     vacancy.display_order = order_val
     vacancy.is_active = is_active
+    vacancy.visible_to_users = visible_to_users
     vacancy.required_documents = required_documents
     vacancy.required_profile_fields = required_profile_fields
     if request.FILES.get("image"):

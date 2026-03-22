@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
@@ -1128,13 +1129,29 @@ def master_data_documents_view(request):
         errors = []
         photo = request.FILES.get("passport_photo")
         signature = request.FILES.get("signature")
+        photo_copy = None
+        signature_copy = None
         # Passport photo/signature profile core fields hain:
         # inhe hard-block na karein, warna user ko lagta hai save nahi hua.
         if photo:
+            try:
+                photo_bytes = photo.read()
+                photo.seek(0)
+                if photo_bytes:
+                    photo_copy = ContentFile(photo_bytes, name=getattr(photo, "name", "passport_photo"))
+            except Exception:
+                photo_copy = None
             err = _validate_file_rule("Passport Size Photo", photo, rule_map)
             if err:
                 messages.warning(request, f"Photo rule warning: {err} (photo save continue hoga)")
         if signature:
+            try:
+                signature_bytes = signature.read()
+                signature.seek(0)
+                if signature_bytes:
+                    signature_copy = ContentFile(signature_bytes, name=getattr(signature, "name", "signature"))
+            except Exception:
+                signature_copy = None
             err = _validate_file_rule("Signature", signature, rule_map)
             if err:
                 messages.warning(request, f"Signature rule warning: {err} (signature save continue hoga)")
@@ -1170,20 +1187,20 @@ def master_data_documents_view(request):
         profile.save()
         # Keep mirrored photo/signature entries in UserDocument so preview areas
         # that read documents also always show latest uploaded image.
-        if photo:
+        if photo_copy:
             photo_doc = profile.documents.filter(title__iexact="Passport Photo").first()
             if photo_doc:
-                photo_doc.file = photo
+                photo_doc.file = photo_copy
                 photo_doc.save()
             else:
-                UserDocument.objects.create(profile=profile, title="Passport Photo", file=photo)
-        if signature:
+                UserDocument.objects.create(profile=profile, title="Passport Photo", file=photo_copy)
+        if signature_copy:
             sign_doc = profile.documents.filter(title__iexact="Signature").first()
             if sign_doc:
-                sign_doc.file = signature
+                sign_doc.file = signature_copy
                 sign_doc.save()
             else:
-                UserDocument.objects.create(profile=profile, title="Signature", file=signature)
+                UserDocument.objects.create(profile=profile, title="Signature", file=signature_copy)
 
         saved_count = 0
         for spec in document_specs:

@@ -129,6 +129,7 @@ class Vacancy(models.Model):
     image = models.ImageField(upload_to="vacancy_images/", null=True, blank=True)
     display_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    visible_to_users = models.JSONField(default=list, blank=True)
     required_documents = models.JSONField(default=list, blank=True)
     required_profile_fields = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

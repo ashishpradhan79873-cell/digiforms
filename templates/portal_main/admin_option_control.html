@@ -178,6 +178,16 @@
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
           <button type="submit" class="btn btn-green">Add Option</button>
         </div>
+        <div class="md:col-span-2 lg:col-span-4">
+          <label class="mini-label">Visible Users (username/mobile/id)</label>
+          <textarea
+            name="visible_to_users"
+            class="mini-input"
+            rows="3"
+            placeholder="Blank chhodo = sab users ko dikhega&#10;ashish&#10;9876543210&#10;12"
+          ></textarea>
+          <p class="mt-1 text-[11px] text-slate-500 font-semibold">Jin users ko ye vacancy dikhani hai unka username, mobile ya user/profile id line by line daalo.</p>
+        </div>
       </form>
     </section>
 
@@ -209,7 +219,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="option_scope" value="{{ category }}">
                 <div class="text-[11px] font-bold text-slate-500">
-                  Current: Fields {{ opt.required_profile_fields|length }} | Docs {{ opt.required_documents|length }} | Active: {{ opt.is_active|yesno:"Yes,No" }}
+                  Current: Fields {{ opt.required_profile_fields|length }} | Docs {{ opt.required_documents|length }} | Active: {{ opt.is_active|yesno:"Yes,No" }} | Visible Users: {% if opt.visible_to_users %}{{ opt.visible_to_users|length }}{% else %}All{% endif %}
                 </div>
                 <input class="mini-input" name="title" value="{{ opt.title }}" required>
                 <input class="mini-input" name="organization" value="{{ opt.organization }}" required>
@@ -307,6 +317,17 @@
                 </div>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="clear_image"> Remove current image</label>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="is_active" {% if opt.is_active %}checked{% endif %}> Active</label>
+                <div>
+                  <label class="mini-label">Visible Users (username/mobile/id)</label>
+                  <textarea
+                    name="visible_to_users"
+                    class="mini-input"
+                    rows="3"
+                    placeholder="Blank = sab users"
+                  >{% if opt.visible_to_users %}{% for item in opt.visible_to_users %}{{ item }}{% if not forloop.last %}
+{% endif %}{% endfor %}{% endif %}</textarea>
+                  <p class="mt-1 text-[11px] text-slate-500 font-semibold">Line by line username, mobile ya id daalo. Blank rahe to sab users ko dikhega.</p>
+                </div>
                 <div>
                   <button type="submit" class="btn btn-green">Edit Save</button>
                 </div>

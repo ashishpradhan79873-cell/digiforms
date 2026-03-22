@@ -11,6 +11,27 @@ except Exception:
 # ==========================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _load_local_env_file():
+    env_path = BASE_DIR / ".env.local"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
+_load_local_env_file()
+
 # ==========================================
 # SECURITY
 # ==========================================
