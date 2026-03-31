@@ -30,6 +30,7 @@
     <div class="font-extrabold text-2xl leading-none">Form Selection Dashboard</div>
   </div>
   <div class="flex items-center gap-2">
+    <a href="{% url 'account_profile_card' %}" class="rounded-lg bg-white/15 px-3 py-2 text-sm font-bold">{{ request.user.username }}</a>
     <a href="{% url 'user_chat' %}" class="rounded-lg bg-white/15 px-3 py-2 text-sm font-bold">Chat</a>
     <a href="{% url 'wallet' %}" title="Wallet" class="rounded-lg bg-white/15 px-3 py-2 text-sm font-bold inline-flex items-center">
       <span class="material-symbols-outlined" style="font-size:18px;">account_balance_wallet</span>

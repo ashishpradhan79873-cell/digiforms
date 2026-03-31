@@ -24,7 +24,7 @@ STEPS = [
     ("address", "Address Details", "master_data_address"),
     ("academic", "Academic Details", "master_data_academic"),
     ("college", "College Details", "master_data_college"),
-    ("bank", "Bank Details", "master_data_bank"),
+    ("bank", "Card Details", "master_data_bank"),
     ("subject", "Subject Details", "master_data_subject"),
     ("documents", "Document Upload", "master_data_documents"),
 ]
@@ -102,7 +102,7 @@ def _mask_profile_for_display(profile):
         "tenth_board", "tenth_roll_number", "tenth_percentage", "tenth_result",
         "twelfth_board", "twelfth_roll_number", "twelfth_percentage", "twelfth_result", "graduation",
         "college_name", "university_name", "course", "year_semester", "enrollment_number",
-        "tenth_subjects", "twelfth_subjects", "previous_course_name", "previous_subjects", "current_course_name", "current_year", "current_semester", "current_subjects",
+        "tenth_subjects", "twelfth_subjects", "graduation_subjects", "previous_course_name", "previous_subjects", "current_course_name", "current_year", "current_semester", "current_subjects",
         "account_holder_name", "bank_name", "account_number", "ifsc_code", "branch_name",
     ]
     for field_name in text_fields:
@@ -554,6 +554,34 @@ def wallet_view(request):
 
 
 @login_required
+def account_profile_card_view(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == "POST":
+        photo = request.FILES.get("profile_photo")
+        clear_photo = request.POST.get("clear_profile_photo") == "1"
+        if photo:
+            profile.photo = photo
+            profile.save(update_fields=["photo"])
+            messages.success(request, "Profile photo update ho gayi.")
+            return redirect("account_profile_card")
+        if clear_photo:
+            profile.photo = None
+            profile.save(update_fields=["photo"])
+            messages.success(request, "Profile photo remove ho gayi.")
+            return redirect("account_profile_card")
+        messages.warning(request, "Photo choose karo ya remove option select karo.")
+        return redirect("account_profile_card")
+
+    return render(
+        request,
+        "accounts/account_profile_card.html",
+        {
+            "profile": profile,
+        },
+    )
+
+
+@login_required
 def document_converter_view(request):
     return render(request, "accounts/document_converter.html")
 
@@ -608,22 +636,15 @@ def _resize_no_stretch(image, req_w, req_h):
     if (out_w, out_h) == (src_w, src_h):
         return image
 
-    # If both dimensions are given, fit inside target box and pad on white.
+    # If both dimensions are given, fill target fully so white side bands do not appear.
     if req_w and req_h:
-        scale = min(req_w / max(src_w, 1), req_h / max(src_h, 1))
-        fit_w = max(int(src_w * scale), 1)
-        fit_h = max(int(src_h * scale), 1)
+        scale = max(req_w / max(src_w, 1), req_h / max(src_h, 1))
+        fit_w = max(int(round(src_w * scale)), 1)
+        fit_h = max(int(round(src_h * scale)), 1)
         fitted = image.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
-        if fitted.mode not in ("RGB", "L"):
-            fitted = _flatten_on_white(fitted)
-        if fitted.mode == "L":
-            canvas = Image.new("L", (req_w, req_h), 255)
-        else:
-            canvas = Image.new("RGB", (req_w, req_h), (255, 255, 255))
-        x = (req_w - fit_w) // 2
-        y = (req_h - fit_h) // 2
-        canvas.paste(fitted, (x, y))
-        return canvas
+        left = max((fit_w - req_w) // 2, 0)
+        top = max((fit_h - req_h) // 2, 0)
+        return fitted.crop((left, top, left + req_w, top + req_h))
 
     # Single-side resize keeps aspect ratio naturally.
     return image.resize((out_w, out_h), Image.Resampling.LANCZOS)
@@ -697,6 +718,10 @@ def document_converter_process_view(request):
         crop_h = int(request.POST.get("crop_h", "0") or "0")
     except ValueError:
         crop_h = 0
+    try:
+        rotate_deg = int(request.POST.get("rotate_deg", "0") or "0")
+    except ValueError:
+        rotate_deg = 0
 
     mime_type = out_type
     if out_type == "keep":
@@ -732,6 +757,10 @@ def document_converter_process_view(request):
             if crop_w > 0 and crop_h > 0:
                 x, y, w, h = _clamp_crop_box(img_w, img_h, crop_x, crop_y, crop_w, crop_h)
                 image = image.crop((x, y, x + w, y + h))
+
+    rotate_deg = rotate_deg % 360
+    if rotate_deg:
+        image = image.rotate(-rotate_deg, expand=True, resample=Image.Resampling.BICUBIC)
 
     image = _resize_no_stretch(image, req_w, req_h)
 
@@ -1097,12 +1126,8 @@ def master_data_subject_view(request):
         p = request.POST
         profile.tenth_subjects = p.get("tenth_subjects", "")
         profile.twelfth_subjects = p.get("twelfth_subjects", "")
-        profile.previous_course_name = p.get("previous_course_name", "")
-        profile.previous_subjects = p.get("previous_subjects", "")
-        profile.current_course_name = p.get("current_course_name", "")
-        profile.current_year = p.get("current_year", "")
-        profile.current_semester = p.get("current_semester", "")
-        profile.current_subjects = p.get("current_subjects", "")
+        profile.graduation = p.get("graduation", "")
+        profile.graduation_subjects = p.get("graduation_subjects", "")
         profile.subject_extra_rows = _merge_admin_and_custom_rows(request, "subject", profile)
         profile.save()
         _mark_master_data_saved(profile)
@@ -1180,10 +1205,16 @@ def master_data_documents_view(request):
                 messages.error(request, msg)
             return redirect("master_data_documents")
 
+        clear_photo = request.POST.get("clear_passport_photo") == "1"
+        clear_signature = request.POST.get("clear_signature") == "1"
         if photo:
             profile.photo = photo
+        elif clear_photo:
+            profile.photo = None
         if signature:
             profile.signature = signature
+        elif clear_signature:
+            profile.signature = None
         profile.save()
         # Keep mirrored photo/signature entries in UserDocument so preview areas
         # that read documents also always show latest uploaded image.
@@ -1194,6 +1225,8 @@ def master_data_documents_view(request):
                 photo_doc.save()
             else:
                 UserDocument.objects.create(profile=profile, title="Passport Photo", file=photo_copy)
+        elif clear_photo:
+            profile.documents.filter(title__iexact="Passport Photo").delete()
         if signature_copy:
             sign_doc = profile.documents.filter(title__iexact="Signature").first()
             if sign_doc:
@@ -1201,12 +1234,18 @@ def master_data_documents_view(request):
                 sign_doc.save()
             else:
                 UserDocument.objects.create(profile=profile, title="Signature", file=signature_copy)
+        elif clear_signature:
+            profile.documents.filter(title__iexact="Signature").delete()
 
         saved_count = 0
         for spec in document_specs:
             field_name = spec["field_name"]
             title = spec["title"]
             file_obj = request.FILES.get(field_name)
+            clear_existing = request.POST.get(f"clear_existing__{field_name}") == "1"
+            if clear_existing and not file_obj:
+                profile.documents.filter(title__iexact=title).delete()
+                continue
             if not file_obj:
                 continue
             existing = profile.documents.filter(title__iexact=title).first()

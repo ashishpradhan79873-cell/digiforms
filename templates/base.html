@@ -4,13 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#0d6efd">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Digi Form">
-    <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
-    <title>{% block title %}Government Portal{% endblock %}</title>
+    <meta name="apple-mobile-web-app-title" content="DigiForm">
+    <link rel="manifest" href="{% url 'manifest_json' %}?v=digiform-2">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'icons/favicon-32.png' %}?v=digiform-2">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.png' %}?v=digiform-2">
+    <title>{% block title %}DigiForm{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
     <style>
@@ -27,9 +29,90 @@
             background: rgba(15, 23, 42, 0.08);
             color: #0f172a;
         }
+        .app-splash {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+              radial-gradient(circle at 50% 20%, rgba(255,255,255,.95), rgba(191,219,254,.85) 35%, rgba(13,110,253,.18) 100%),
+              linear-gradient(135deg, #eff6ff, #dbeafe);
+            opacity: 1;
+            transition: opacity .45s ease, visibility .45s ease;
+        }
+        .app-splash.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .app-splash-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            animation: splashZoom .85s ease;
+            text-align: center;
+        }
+        .app-splash-logo {
+            width: min(28vw, 132px);
+            height: min(28vw, 132px);
+            border-radius: 28px;
+            box-shadow: 0 18px 48px rgba(13,110,253,.22);
+        }
+        .app-splash-title {
+            font-size: clamp(1.25rem, 3.5vw, 2rem);
+            font-weight: 900;
+            letter-spacing: .02em;
+            color: #0b3c91;
+        }
+        .app-splash-subtitle {
+            font-size: clamp(.8rem, 2vw, 1rem);
+            font-weight: 700;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: rgba(11,60,145,.72);
+        }
+        .app-splash-loader {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .app-splash-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: #0d6efd;
+            box-shadow: 0 0 0 0 rgba(13,110,253,.25);
+            animation: splashPulse 1.15s infinite ease-in-out;
+        }
+        .app-splash-dot:nth-child(2) { animation-delay: .18s; }
+        .app-splash-dot:nth-child(3) { animation-delay: .36s; }
+        @keyframes splashZoom {
+            0% { transform: scale(.88); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes splashPulse {
+            0%, 100% { transform: translateY(0) scale(.9); opacity: .55; }
+            50% { transform: translateY(-4px) scale(1.08); opacity: 1; box-shadow: 0 0 0 10px rgba(13,110,253,0); }
+        }
     </style>
 </head>
 <body class="{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}">
+    <div id="appSplash" class="app-splash hidden" aria-hidden="true">
+        <div class="app-splash-card">
+            <img src="{% static 'icons/icon-512.png' %}?v=digiform-2" alt="DigiForm" class="app-splash-logo">
+            <div class="app-splash-title">DigiForm</div>
+            <div class="app-splash-subtitle">Online Form Filling</div>
+            <div class="app-splash-loader" aria-hidden="true">
+                <span class="app-splash-dot"></span>
+                <span class="app-splash-dot"></span>
+                <span class="app-splash-dot"></span>
+            </div>
+        </div>
+    </div>
     <main class="{% block page_container_class %}max-w-5xl mx-auto p-4 md:p-6{% endblock %}">
         {% if breadcrumbs and breadcrumbs|length > 1 %}
         <nav class="mb-4 overflow-x-auto whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
@@ -56,8 +139,36 @@
 
         {% block content %}{% endblock %}
     </main>
+    <footer class="max-w-5xl mx-auto px-4 pb-6 text-center text-xs text-slate-500">
+        <div class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+            <div class="flex flex-wrap items-center justify-center gap-3 font-semibold">
+                <a href="{% url 'terms_conditions' %}" class="hover:text-blue-700">Terms & Conditions</a>
+                <span class="text-slate-300">|</span>
+                <a href="{% url 'privacy_policy' %}" class="hover:text-blue-700">Privacy Policy</a>
+                <span class="text-slate-300">|</span>
+                <a href="{% url 'refund_policy' %}" class="hover:text-blue-700">Refund Policy</a>
+            </div>
+        </div>
+    </footer>
     <script>
       (function () {
+        const splash = document.getElementById("appSplash");
+        const inStandalone =
+          window.matchMedia("(display-mode: standalone)").matches ||
+          window.navigator.standalone === true;
+        if (splash && inStandalone) {
+          const splashKey = "digiform_launch_splash_shown";
+          const alreadyShown = window.sessionStorage.getItem(splashKey) === "1";
+          if (!alreadyShown) {
+            splash.classList.remove("hidden");
+            window.sessionStorage.setItem(splashKey, "1");
+            window.addEventListener("load", function () {
+              setTimeout(function () {
+                splash.classList.add("hidden");
+              }, 3500);
+            });
+          }
+        }
         // Best-effort client-side protection (browser level hard block possible nahi hota).
         document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
         document.addEventListener("keydown", function (e) {
@@ -79,6 +190,30 @@
         if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
           setTimeout(function () { window.scrollTo(0, 1); }, 50);
         }
+      })();
+    </script>
+    <script>
+      (function () {
+        if (!("serviceWorker" in navigator)) return;
+        const isLocalHost =
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname === "localhost";
+
+        window.addEventListener("load", function () {
+          if (isLocalHost) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+              registrations.forEach(function (registration) {
+                registration.unregister();
+              });
+            });
+            return;
+          }
+
+          navigator.serviceWorker.register("{% url 'service_worker' %}")
+            .catch(function (err) {
+              console.warn("Service worker registration failed:", err);
+            });
+        });
       })();
     </script>
 </body>

@@ -32,7 +32,9 @@
   .block { background:#fff; border:1px solid #d8dfeb; border-radius:14px; }
   .btn { border-radius:8px; font-weight:700; padding:6px 9px; border:1px solid transparent; font-size:12px; line-height:1.2; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
   .btn-red { background:#fff1f1; border-color:#efb9b9; color:#a31f1f; }
+  .btn-red-solid { background:#dc2626; border-color:#dc2626; color:#fff; }
   .btn-green { background:#15803d; color:#fff; }
+  .btn-disabled { opacity:.45; pointer-events:none; }
   .mini-input { border:1px solid #cbd5e1; border-radius:8px; padding:7px 9px; font-size:13px; width:100%; }
   .mini-label { font-size:12px; color:#475569; font-weight:700; margin-bottom:4px; display:block; }
   .table-wrap { overflow:auto; }
@@ -45,6 +47,10 @@
   .doc-table { width:100%; border-collapse:collapse; margin-top:8px; }
   .doc-table th, .doc-table td { border:1px solid #d8dfeb; padding:6px; font-size:12px; }
   .doc-table th { background:#f8fafc; color:#475569; text-align:left; }
+  .edit-shell { border:1px solid #d8dfeb; border-radius:12px; background:#fbfdff; padding:10px; }
+  .edit-summary { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+  .edit-details { display:none; margin-top:10px; }
+  .edit-shell.open .edit-details { display:block; }
   @media (max-width: 1100px){ .layout, .layout.compact { grid-template-columns:1fr; } .panel { padding:12px; } }
 </style>
 
@@ -137,10 +143,19 @@
           <div class="builder-box" data-field-editor>
             <button class="btn btn-green" type="button" data-add-field-row>+ Add Row</button>
             <table class="doc-table">
-              <thead><tr><th>Field Name</th><th style="width:80px;">Action</th></tr></thead>
+              <thead><tr><th>Field Name</th><th style="width:220px;">Comment / Guide</th><th style="width:80px;">Action</th></tr></thead>
               <tbody data-field-table>
                 <tr>
-                  <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
+                  <td>
+                    <div class="grid grid-cols-1 md:grid-cols-[110px_1fr] gap-2">
+                      <select class="mini-input" data-field-type name="field_type[]">
+                        <option value="FIELD">Field</option>
+                        <option value="COMMENT">Comment</option>
+                      </select>
+                      <input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No / Comment text">
+                    </div>
+                  </td>
+                  <td><input class="mini-input" type="text" data-field-comment name="field_comment[]" placeholder="e.g. bina space ke bharo"></td>
                   <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                 </tr>
               </tbody>
@@ -176,6 +191,7 @@
         </div>
         <div class="flex items-end gap-2">
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="is_active" checked> Active</label>
+          <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="hidden_from_users"> Hide To User</label>
           <button type="submit" class="btn btn-green">Add Option</button>
         </div>
         <div class="md:col-span-2 lg:col-span-4">
@@ -218,9 +234,14 @@
               <form method="post" action="{% url 'admin_update_vacancy' opt.id %}" enctype="multipart/form-data" class="space-y-2">
                 {% csrf_token %}
                 <input type="hidden" name="option_scope" value="{{ category }}">
-                <div class="text-[11px] font-bold text-slate-500">
-                  Current: Fields {{ opt.required_profile_fields|length }} | Docs {{ opt.required_documents|length }} | Active: {{ opt.is_active|yesno:"Yes,No" }} | Visible Users: {% if opt.visible_to_users %}{{ opt.visible_to_users|length }}{% else %}All{% endif %}
+                <div class="edit-shell" data-edit-shell>
+                <div class="edit-summary">
+                  <div class="text-[11px] font-bold text-slate-500">
+                    Current: Fields {{ opt.required_profile_fields|length }} | Docs {{ opt.required_documents|length }} | Active: {{ opt.is_active|yesno:"Yes,No" }} | Visible Users: {% if opt.visible_to_users %}{{ opt.visible_to_users|length }}{% else %}All{% endif %}
+                  </div>
+                  <button type="button" class="btn btn-green" data-toggle-edit>Open Edit</button>
                 </div>
+                <div class="edit-details">
                 <input class="mini-input" name="title" value="{{ opt.title }}" required>
                 <input class="mini-input" name="organization" value="{{ opt.organization }}" required>
                 <input class="mini-input" type="date" name="last_date" value="{{ opt.last_date|date:'Y-m-d' }}" required>
@@ -268,18 +289,36 @@
                 <div class="builder-box" data-field-editor>
                   <button class="btn btn-green" type="button" data-add-field-row>+ Add Row</button>
                   <table class="doc-table">
-                    <thead><tr><th>Field Name</th><th style="width:80px;">Action</th></tr></thead>
+                    <thead><tr><th>Field Name</th><th style="width:220px;">Comment / Guide</th><th style="width:80px;">Action</th></tr></thead>
                     <tbody data-field-table>
-                      {% if opt.required_profile_fields %}
-                        {% for item in opt.required_profile_fields %}
+                      {% if opt.field_rows %}
+                        {% for item in opt.field_rows %}
                         <tr>
-                          <td><input class="mini-input" type="text" data-field-name name="field_name[]" value="{{ item }}" placeholder="e.g. Aadhaar No"></td>
+                          <td>
+                            <div class="grid grid-cols-1 md:grid-cols-[110px_1fr] gap-2">
+                              <select class="mini-input" data-field-type name="field_type[]">
+                                <option value="FIELD" {% if item.kind != "COMMENT" %}selected{% endif %}>Field</option>
+                                <option value="COMMENT" {% if item.kind == "COMMENT" %}selected{% endif %}>Comment</option>
+                              </select>
+                              <input class="mini-input" type="text" data-field-name name="field_name[]" value="{{ item.label }}" placeholder="e.g. Aadhaar No / Comment text">
+                            </div>
+                          </td>
+                          <td><input class="mini-input" type="text" data-field-comment name="field_comment[]" value="{{ item.comment }}" placeholder="e.g. bina space ke bharo"></td>
                           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                         </tr>
                         {% endfor %}
                       {% else %}
                         <tr>
-                          <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
+                          <td>
+                            <div class="grid grid-cols-1 md:grid-cols-[110px_1fr] gap-2">
+                              <select class="mini-input" data-field-type name="field_type[]">
+                                <option value="FIELD">Field</option>
+                                <option value="COMMENT">Comment</option>
+                              </select>
+                              <input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No / Comment text">
+                            </div>
+                          </td>
+                          <td><input class="mini-input" type="text" data-field-comment name="field_comment[]" placeholder="e.g. bina space ke bharo"></td>
                           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
                         </tr>
                       {% endif %}
@@ -317,6 +356,7 @@
                 </div>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="clear_image"> Remove current image</label>
                 <label class="text-xs text-slate-700"><input type="checkbox" name="is_active" {% if opt.is_active %}checked{% endif %}> Active</label>
+                <label class="text-xs text-slate-700"><input type="checkbox" name="hidden_from_users" {% if opt.hidden_from_users %}checked{% endif %}> Hide To User</label>
                 <div>
                   <label class="mini-label">Visible Users (username/mobile/id)</label>
                   <textarea
@@ -331,17 +371,41 @@
                 <div>
                   <button type="submit" class="btn btn-green">Edit Save</button>
                 </div>
+                </div>
+                </div>
               </form>
               <form method="post" action="{% url 'admin_delete_vacancy' opt.id %}" class="mt-2 js-ajax-vacancy-remove" data-vacancy-id="{{ opt.id }}">
                 {% csrf_token %}
                 <input type="hidden" name="option_scope" value="{{ category }}">
                 <button type="submit" class="btn btn-red">Remove</button>
               </form>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <form method="post" action="{% url 'admin_toggle_vacancy_active' opt.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="option_scope" value="{{ category }}">
+                  <input type="hidden" name="set_active" value="1">
+                  <button type="submit" class="btn btn-green {% if opt.is_active %}btn-disabled{% endif %}">Activate</button>
+                </form>
+                <form method="post" action="{% url 'admin_toggle_vacancy_active' opt.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="option_scope" value="{{ category }}">
+                  <input type="hidden" name="set_active" value="0">
+                  <button type="submit" class="btn btn-red-solid {% if not opt.is_active %}btn-disabled{% endif %}">Deactivate</button>
+                </form>
+                <form method="post" action="{% url 'admin_toggle_vacancy_user_hide' opt.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="option_scope" value="{{ category }}">
+                  <button type="submit" class="btn {% if opt.hidden_from_users %}btn-green{% else %}btn-red{% endif %}">{% if opt.hidden_from_users %}Show To User{% else %}Hide To User{% endif %}</button>
+                </form>
+              </div>
             </td>
             <td class="px-3 py-2 align-top">{{ opt.organization }}</td>
             <td class="px-3 py-2 align-top">{{ opt.last_date|date:'Y-m-d' }}</td>
             <td class="px-3 py-2 align-top">{{ opt.display_order }}</td>
-            <td class="px-3 py-2 align-top">{{ opt.is_active|yesno:"Yes,No" }}</td>
+            <td class="px-3 py-2 align-top">
+              <div>Active: {{ opt.is_active|yesno:"Yes,No" }}</div>
+              <div>User: {% if opt.hidden_from_users %}Hidden{% else %}Visible{% endif %}</div>
+            </td>
             <td class="px-3 py-2 align-top text-xs text-slate-500">Editable row</td>
           </tr>
           {% empty %}
@@ -445,8 +509,13 @@
       const values = [];
       tbody.querySelectorAll("tr").forEach((row) => {
         const nameEl = row.querySelector("[data-field-name]");
+        const typeEl = row.querySelector("[data-field-type]");
+        const commentEl = row.querySelector("[data-field-comment]");
         const v = (nameEl ? nameEl.value : "").trim();
-        if (v) values.push(v);
+        const comment = (commentEl ? commentEl.value : "").trim();
+        const t = (typeEl ? typeEl.value : "FIELD").toUpperCase();
+        if (!v) return;
+        values.push(t === "COMMENT" ? `COMMENT|${v}` : (comment ? `${v}||${comment}` : v));
       });
       hiddenWrap.innerHTML = values.map((v) => `<input type="hidden" name="required_profile_fields_item[]" value="${v}">`).join("");
     }
@@ -472,7 +541,16 @@
       function addRow() {
         const row = document.createElement("tr");
         row.innerHTML = `
-          <td><input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No"></td>
+          <td>
+            <div class="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-2">
+              <select class="mini-input" data-field-type name="field_type[]">
+                <option value="FIELD">Field</option>
+                <option value="COMMENT">Comment</option>
+              </select>
+              <input class="mini-input" type="text" data-field-name name="field_name[]" placeholder="e.g. Aadhaar No / Comment text">
+            </div>
+          </td>
+          <td><input class="mini-input" type="text" data-field-comment name="field_comment[]" placeholder="e.g. bina space ke bharo"></td>
           <td><button type="button" class="btn btn-red" data-remove-field-row>X</button></td>
         `;
         tbody.appendChild(row);
@@ -553,6 +631,14 @@
       if (box.querySelector("[data-doc-table]")) bindDocEditor(box);
     });
     document.querySelectorAll("[data-field-editor]").forEach(bindFieldEditor);
+    document.querySelectorAll("[data-toggle-edit]").forEach((btnItem) => {
+      btnItem.addEventListener("click", () => {
+        const shell = btnItem.closest("[data-edit-shell]");
+        if (!shell) return;
+        shell.classList.toggle("open");
+        btnItem.textContent = shell.classList.contains("open") ? "Close Edit" : "Open Edit";
+      });
+    });
 
     document.querySelectorAll("[data-paste-target]").forEach((btnPaste) => {
       btnPaste.addEventListener("click", async () => {

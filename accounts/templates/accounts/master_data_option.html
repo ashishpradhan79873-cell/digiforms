@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block header_right %}
-<span class="chip">{{ request.user.username }}</span>
+<a href="{% url 'account_profile_card' %}" class="chip hover:bg-slate-200">{{ request.user.username }}</a>
 <a href="{% url 'wallet' %}" title="Wallet" class="rounded-lg px-3 py-2 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 inline-flex items-center">
     <span class="material-symbols-outlined" style="font-size:18px;">account_balance_wallet</span>
 </a>

@@ -167,6 +167,20 @@ else:
     }
 
 # ==========================================
+# CASHFREE PAYMENT
+# ==========================================
+CASHFREE_CLIENT_ID = os.getenv("CASHFREE_CLIENT_ID", "").strip()
+CASHFREE_CLIENT_SECRET = os.getenv("CASHFREE_CLIENT_SECRET", "").strip()
+CASHFREE_MODE = os.getenv("CASHFREE_MODE", "sandbox").strip().lower() or "sandbox"
+CASHFREE_API_VERSION = os.getenv("CASHFREE_API_VERSION", "2025-01-01").strip() or "2025-01-01"
+CASHFREE_ENABLED = bool(CASHFREE_CLIENT_ID and CASHFREE_CLIENT_SECRET)
+CASHFREE_API_BASE = (
+    "https://sandbox.cashfree.com/pg"
+    if CASHFREE_MODE != "production"
+    else "https://api.cashfree.com/pg"
+)
+
+# ==========================================
 # LOGIN & SESSIONS
 # ==========================================
 LOGIN_URL = '/accounts/login/'

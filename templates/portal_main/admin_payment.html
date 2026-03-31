@@ -63,7 +63,7 @@
 
     <section class="block p-4">
       <h1 class="text-3xl font-black">Payment Settings</h1>
-      <p class="text-sm text-slate-600 mt-1">Apply page par isi config se UPI app open hoga. User chahe to Skip करके भी send kar sakta hai.</p>
+      <p class="text-sm text-slate-600 mt-1">Apply page par isi config se payment chalega. UPI preview bhi rahega, aur Cashfree sandbox checkout bhi isi amount par kaam karega.</p>
       <form method="post" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         {% csrf_token %}
         <div>
@@ -99,6 +99,11 @@
 
     <section class="block p-4">
       <h2 class="text-xl font-black">Preview</h2>
+      <div class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+        <div><strong>Cashfree:</strong> {% if cashfree_enabled %}Active{% else %}Not Configured{% endif %}</div>
+        <div><strong>Mode:</strong> {{ cashfree_mode|title }}</div>
+        <div><strong>Checkout Amount:</strong> Rs {{ cashfree_amount }}</div>
+      </div>
       {% if upi_link %}
       <div class="mt-2 text-xs text-slate-500 break-all">{{ upi_link }}</div>
       {% else %}
@@ -127,4 +132,5 @@
   })();
 </script>
 {% endblock %}
+
 

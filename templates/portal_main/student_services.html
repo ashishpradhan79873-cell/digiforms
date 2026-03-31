@@ -13,7 +13,9 @@
   .service-card { overflow:hidden; position:relative; }
   .service-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:22px; }
   .btn-apply { background:#1f8a3c; color:#fff; font-weight:900; border-radius:10px; padding:10px 14px; text-align:center; width:100%; display:block; }
+  .btn-deactivated { background:#dc2626; color:#fff; font-weight:900; border-radius:10px; padding:10px 14px; text-align:center; width:100%; display:block; cursor:not-allowed; opacity:.96; }
   .status-pill { border-radius:999px; font-weight:800; font-size:12px; padding:4px 10px; background:#c9f2d7; color:#0c6d3d; }
+  .status-deactivated { background:#fee2e2; color:#b91c1c; }
   .service-top { display:grid; grid-template-columns:1fr 165px; gap:12px; align-items:stretch; min-height:170px; }
   .service-media { border-radius:12px; overflow:hidden; border:1px solid #dbe3ef; background:#eef2ff; }
   .service-media { height:170px; }
@@ -75,7 +77,9 @@
           <div>
             <div class="flex items-center justify-between">
               <span class="material-symbols-outlined text-4xl text-blue-900">{{ vacancy.icon_name|default:'description' }}</span>
-              {% if app and app.status != 'cancelled' %}
+              {% if not vacancy.is_active %}
+                <span class="status-pill status-deactivated">Deactivated</span>
+              {% elif app and app.status != 'cancelled' %}
                 <span class="status-pill">Applied</span>
               {% endif %}
             </div>
@@ -91,10 +95,16 @@
             {% endif %}
           </div>
         </div>
+        {% if vacancy.is_active %}
         <form method="post" action="{% url 'apply_student_service' vacancy.id %}" class="mt-4">
           {% csrf_token %}
           <button class="btn-apply" type="submit">{% if app and app.status != 'cancelled' %}Applied{% else %}Apply Now{% endif %}</button>
         </form>
+        {% else %}
+        <div class="mt-4">
+          <button class="btn-deactivated" type="button" disabled>Deactivated</button>
+        </div>
+        {% endif %}
         {% if app and app.status != 'cancelled' %}
         <form method="post" action="{% url 'cancel_own_application' app.id %}" class="mt-2">
           {% csrf_token %}

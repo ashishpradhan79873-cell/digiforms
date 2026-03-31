@@ -150,13 +150,13 @@
         </thead>
         <tbody>
           {% for app in applications %}
-          <tr class="border-t border-slate-200 align-top app-row" data-app-row="{{ app.id }}" data-search="{{ app.id }} {{ app.profile.id }} {{ app.profile.full_name|lower }} {{ app.profile.mobile }} {{ app.vacancy.title|lower }}">
+          <tr class="border-t border-slate-200 align-top app-row" data-app-row="{{ app.id }}" data-search="{{ app.id }} {{ app.profile.id }} {{ app.display_full_name|lower }} {{ app.display_mobile }} {{ app.vacancy.title|lower }}">
             <td class="font-bold">#{{ app.id }}</td>
-            <td>{{ app.profile.full_name }}</td>
-            <td>{{ app.profile.dob|date:'Y-m-d' }}</td>
-            <td>{{ app.profile.get_gender_display }}</td>
-            <td>{{ app.profile.category }}</td>
-            <td>{{ app.profile.mobile }}</td>
+            <td>{{ app.display_full_name }}</td>
+            <td>{{ app.display_dob|default:"-" }}</td>
+            <td>{{ app.display_gender|default:"-" }}</td>
+            <td>{{ app.display_category|default:"-" }}</td>
+            <td>{{ app.display_mobile|default:"-" }}</td>
             <td>{{ app.vacancy.title }}</td>
             <td><span class="status {{ app.status }}">{{ app.get_status_display }}</span></td>
             <td>
@@ -306,6 +306,7 @@
   }
 
   function sectionHtml(title, rows) {
+    if (!rows || !rows.length) return "";
     return `<section><h4 class="text-xl font-black mb-2">${escapeHtml(title)}</h4><div class="detail-grid">${rows.map((r) => rowHtml(r[0], r[1])).join("")}</div></section>`;
   }
 
@@ -330,8 +331,8 @@
         ${sectionHtml("Address", data.address || [])}
         ${sectionHtml("Academic", data.academic || [])}
         ${sectionHtml("College", data.college || [])}
-        ${sectionHtml("Bank", data.bank || [])}
-        ${sectionHtml("Vacancy Extra Data", data.vacancy_extra || [])}
+        ${sectionHtml("Card Details", data.bank || [])}
+        ${sectionHtml("", data.vacancy_extra || [])}
         <section>
           <h4 class="text-xl font-black mb-2">Documents</h4>
           <div class="grid md:grid-cols-2 gap-2">

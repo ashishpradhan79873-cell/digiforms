@@ -160,6 +160,9 @@
   .doc-preview-large { width:140px; height:140px; }
   .file-meta { display:flex; flex-direction:column; gap:4px; }
   .file-name { font-size:12px; color:#475569; word-break:break-all; }
+  .file-action-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center; }
+  .file-clear-btn { border:1px solid #d4dde7; background:#fff; color:#334155; border-radius:10px; padding:7px 10px; font-size:12px; font-weight:800; }
+  .file-remove-label { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#475569; }
   .subject-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .subject-card { border:1px solid #dbe3ef; border-radius:16px; background:#fbfcff; padding:16px; }
   .subject-label { display:block; font-size:14px; font-weight:800; color:#0f172a; margin-bottom:8px; }
@@ -412,15 +415,15 @@
       {% if current_step == 'bank' %}
       <form method="post">
         {% csrf_token %}
-        <div class="card-head"><div class="card-title">Section 5: Bank / Account Details</div></div>
+        <div class="card-head"><div class="card-title">Section 5: Card Details</div></div>
         <div class="card-body">
           <div id="bank-table-wrap" class="mini-box">
             <table class="mini-table">
               <thead><tr><th>Heading</th><th>Value</th><th class="action-head">Action</th></tr></thead>
               <tbody id="bank-table">
-                <tr><td>Account Holder Name</td><td><input class="input" type="text" name="account_holder_name" value="{{ profile.account_holder_name }}"></td><td class="action-col text-center">-</td></tr>
-                <tr><td>Bank Name</td><td><input class="input" type="text" name="bank_name" value="{{ profile.bank_name }}"></td><td class="action-col text-center">-</td></tr>
-                <tr><td>Account Number</td><td><input class="input" type="text" name="account_number" value="{{ profile.account_number }}"></td><td class="action-col text-center">-</td></tr>
+                <tr><td>Card Holder Name</td><td><input class="input" type="text" name="account_holder_name" value="{{ profile.account_holder_name }}"></td><td class="action-col text-center">-</td></tr>
+                <tr><td>Card Name</td><td><input class="input" type="text" name="bank_name" value="{{ profile.bank_name }}"></td><td class="action-col text-center">-</td></tr>
+                <tr><td>Card Number</td><td><input class="input" type="text" name="account_number" value="{{ profile.account_number }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>IFSC Code</td><td><input class="input" type="text" name="ifsc_code" value="{{ profile.ifsc_code }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Branch Name</td><td><input class="input" type="text" name="branch_name" value="{{ profile.branch_name }}"></td><td class="action-col text-center">-</td></tr>
                 <tr><td>Aadhaar Linked</td><td><select class="select" name="aadhaar_linked"><option value="">Select</option><option value="yes" {% if profile.aadhaar_linked == 'yes' %}selected{% endif %}>Yes</option><option value="no" {% if profile.aadhaar_linked == 'no' %}selected{% endif %}>No</option></select></td><td class="action-col text-center">-</td></tr>
@@ -457,49 +460,6 @@
             <div class="subject-progress-line"><div class="subject-progress-fill"></div></div>
           </div>
 
-          <div class="subject-grid">
-            <div class="subject-card">
-              <div class="subject-block-title">
-                <span>Current Qualification</span>
-                <span class="subject-badge">Course</span>
-              </div>
-              <label class="subject-label">Degree / Course Name</label>
-              <input class="input" type="text" name="current_course_name" value="{{ profile.current_course_name }}" placeholder="e.g. B.Tech Computer Science">
-              <div class="subject-mini-grid mt-4">
-                <div>
-                  <label class="subject-label">Current Year</label>
-                  <input class="input" type="text" name="current_year" value="{{ profile.current_year }}" placeholder="1st Year">
-                </div>
-                <div>
-                  <label class="subject-label">Semester</label>
-                  <input class="input" type="text" name="current_semester" value="{{ profile.current_semester }}" placeholder="Sem 1">
-                </div>
-              </div>
-              <div class="mt-4">
-                <label class="subject-label">My Current Subjects</label>
-                <textarea id="current-subjects-hidden" class="hidden" name="current_subjects">{{ profile.current_subjects }}</textarea>
-                <div id="current-subject-list"></div>
-                <button type="button" id="add-current-subject-btn" class="subject-add-btn mt-2">+ Add Subject</button>
-              </div>
-            </div>
-
-            <div class="subject-card">
-              <div class="subject-block-title">
-                <span>Previous Year Qualification</span>
-                <span class="subject-badge">Previous</span>
-              </div>
-              <label class="subject-label">Course Name</label>
-              <input class="input" type="text" name="previous_course_name" value="{{ profile.previous_course_name }}" placeholder="e.g. BCA 1st Year / Previous Course">
-              <div class="mt-4">
-                <label class="subject-label">Subjects With Percentage</label>
-                <textarea id="previous-subjects-hidden" class="hidden" name="previous_subjects">{{ profile.previous_subjects }}</textarea>
-                <div class="subject-table-head"><span>Subject Name</span><span>Marks (%)</span></div>
-                <div id="previous-subject-list"></div>
-                <button type="button" id="add-previous-subject-btn" class="subject-add-btn mt-2">+ Add Subject</button>
-              </div>
-            </div>
-          </div>
-
           <div class="subject-stack">
             <div class="subject-card">
               <div class="subject-block-title">
@@ -523,8 +483,26 @@
             </div>
           </div>
 
+          <div class="subject-grid mt-4">
+            <div class="subject-card">
+              <div class="subject-block-title">
+                <span>Graduation Details</span>
+                <span class="subject-badge">Graduation</span>
+              </div>
+              <label class="subject-label">Graduation Name / Degree</label>
+              <input class="input" type="text" name="graduation" value="{{ profile.graduation }}" placeholder="e.g. B.Sc / B.Com / BA">
+              <div class="mt-4">
+                <label class="subject-label">Graduation Subjects With Percentage</label>
+                <textarea id="graduation-subjects-hidden" class="hidden" name="graduation_subjects">{{ profile.graduation_subjects }}</textarea>
+                <div class="subject-table-head"><span>Subject Name</span><span>Marks (%)</span></div>
+                <div id="graduation-subject-list"></div>
+                <button type="button" id="add-graduation-subject-btn" class="subject-add-btn mt-2">+ Add Subject</button>
+              </div>
+            </div>
+          </div>
+
           <div class="subject-note">
-            Please ensure all subjects and marks match your official marksheets. Current subjects me marks ki zarurat nahi hai, lekin previous course me subject + percentage fill kar sakte ho.
+            Please ensure all subjects and marks match your official marksheets. Ab yahan 10th, 12th aur graduation details hi save hongi.
           </div>
 
           <div id="subject-table-wrap" class="mini-box mt-4 subject-extra-wrap">
@@ -563,6 +541,12 @@
                   <td>
                     <input id="passport-photo-input" data-preview-target="passport-photo-preview" data-file-name-target="passport-photo-name" type="file" name="passport_photo" accept="image/*" class="input">
                     <div class="file-meta mt-1">{% if passport_photo_url %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="passport-photo-name" class="file-name"></span><img id="passport-photo-preview" class="doc-preview doc-preview-large" src="{{ passport_photo_url }}" alt="photo" {% if passport_photo_url %}style="display:block"{% endif %}></div>
+                    <div class="file-action-row">
+                      <button type="button" class="file-clear-btn" data-clear-file="passport-photo-input">Cancel Selection</button>
+                      {% if passport_photo_url %}
+                      <label class="file-remove-label"><input type="checkbox" name="clear_passport_photo" value="1"> Remove Current Upload</label>
+                      {% endif %}
+                    </div>
                   </td>
                   <td class="action-col text-center">-</td>
                 </tr>
@@ -571,6 +555,12 @@
                   <td>
                     <input id="signature-input" data-preview-target="signature-preview" data-file-name-target="signature-name" type="file" name="signature" accept="image/*" class="input">
                     <div class="file-meta mt-1">{% if signature_url %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}<span id="signature-name" class="file-name"></span><img id="signature-preview" class="doc-preview doc-preview-large" src="{{ signature_url }}" alt="sign" {% if signature_url %}style="display:block"{% endif %}></div>
+                    <div class="file-action-row">
+                      <button type="button" class="file-clear-btn" data-clear-file="signature-input">Cancel Selection</button>
+                      {% if signature_url %}
+                      <label class="file-remove-label"><input type="checkbox" name="clear_signature" value="1"> Remove Current Upload</label>
+                      {% endif %}
+                    </div>
                   </td>
                   <td class="action-col text-center">-</td>
                 </tr>
@@ -578,11 +568,17 @@
                 <tr>
                   <td>{{ doc.title }} (Required: {{ doc.required }})</td>
                   <td>
-                    <input type="file" name="{{ doc.field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}">
+                    <input id="doc-input-{{ forloop.counter }}" type="file" name="{{ doc.field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}">
                     <div class="file-meta mt-1">
                       {% if doc.uploaded %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}
                       <span id="doc-name-{{ forloop.counter }}" class="file-name">{% if doc.uploaded_name %}{{ doc.uploaded_name }}{% endif %}</span>
                       <img id="doc-preview-{{ forloop.counter }}" class="doc-preview" alt="document preview" src="{{ doc.preview_url }}" {% if doc.preview_url %}style="display:block"{% endif %}>
+                    </div>
+                    <div class="file-action-row">
+                      <button type="button" class="file-clear-btn" data-clear-file="doc-input-{{ forloop.counter }}">Cancel Selection</button>
+                      {% if doc.uploaded %}
+                      <label class="file-remove-label"><input type="checkbox" name="clear_existing__{{ doc.field_name }}" value="1"> Remove Current Upload</label>
+                      {% endif %}
                     </div>
                   </td>
                   <td class="action-col text-center">-</td>
@@ -716,6 +712,24 @@
         }
       });
     });
+
+    document.querySelectorAll('[data-clear-file]').forEach((btn) => {
+      if (btn.dataset.boundClear === '1') return;
+      btn.dataset.boundClear = '1';
+      btn.addEventListener('click', function () {
+        const inputId = btn.getAttribute('data-clear-file');
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const preview = document.getElementById(input.dataset.previewTarget);
+        const nameEl = document.getElementById(input.dataset.fileNameTarget);
+        input.value = '';
+        if (nameEl) nameEl.textContent = '';
+        if (preview) {
+          preview.style.display = 'none';
+          preview.removeAttribute('src');
+        }
+      });
+    });
   }
 
   bindFilePreviewHandlers();
@@ -740,67 +754,44 @@
     hidden.value = rows.join('\n');
   }
 
-  function syncCurrentSubjects() {
-    const hidden = document.getElementById('current-subjects-hidden');
-    const list = document.getElementById('current-subject-list');
-    if (!hidden || !list) return;
-    const rows = [];
-    list.querySelectorAll('.subject-row').forEach((row) => {
-      const subject = (row.querySelector('[data-current-subject]') || {}).value || '';
-      if (subject.trim()) rows.push(subject.trim());
-    });
-    hidden.value = rows.join('\n');
-  }
-
   function createSubjectRow(subject, marks, mode) {
     const row = document.createElement('div');
     row.className = 'subject-row';
-    if (mode === 'current') {
-      row.style.gridTemplateColumns = '1fr';
-      row.innerHTML = '<input class="input" type="text" data-current-subject placeholder="Subject name" value="' + (subject || '') + '">';
-      row.querySelector('[data-current-subject]').addEventListener('input', syncCurrentSubjects);
-    } else {
-      const hiddenId = mode === 'tenth' ? 'tenth-subjects-hidden' : (mode === 'twelfth' ? 'twelfth-subjects-hidden' : 'previous-subjects-hidden');
-      const listId = mode === 'tenth' ? 'tenth-subject-list' : (mode === 'twelfth' ? 'twelfth-subject-list' : 'previous-subject-list');
-      row.innerHTML =
-        '<input class="input" type="text" data-subject-name placeholder="Subject name" value="' + (subject || '') + '">' +
-        '<input class="input" type="text" data-subject-marks placeholder="00" value="' + (marks || '') + '">';
-      row.querySelector('[data-subject-name]').addEventListener('input', function () {
-        syncSubjectPairs(hiddenId, listId);
-      });
-      row.querySelector('[data-subject-marks]').addEventListener('input', function () {
-        syncSubjectPairs(hiddenId, listId);
-      });
-    }
+    const hiddenId = mode === 'tenth' ? 'tenth-subjects-hidden' : (mode === 'twelfth' ? 'twelfth-subjects-hidden' : 'graduation-subjects-hidden');
+    const listId = mode === 'tenth' ? 'tenth-subject-list' : (mode === 'twelfth' ? 'twelfth-subject-list' : 'graduation-subject-list');
+    row.innerHTML =
+      '<input class="input" type="text" data-subject-name placeholder="Subject name" value="' + (subject || '') + '">' +
+      '<input class="input" type="text" data-subject-marks placeholder="00" value="' + (marks || '') + '">';
+    row.querySelector('[data-subject-name]').addEventListener('input', function () {
+      syncSubjectPairs(hiddenId, listId);
+    });
+    row.querySelector('[data-subject-marks]').addEventListener('input', function () {
+      syncSubjectPairs(hiddenId, listId);
+    });
     return row;
   }
 
   function initSubjectBuilder() {
     const tenthHidden = document.getElementById('tenth-subjects-hidden');
     const twelfthHidden = document.getElementById('twelfth-subjects-hidden');
-    const currentHidden = document.getElementById('current-subjects-hidden');
-    const previousHidden = document.getElementById('previous-subjects-hidden');
-    if (!tenthHidden || !twelfthHidden || !currentHidden || !previousHidden) return;
+    const graduationHidden = document.getElementById('graduation-subjects-hidden');
+    if (!tenthHidden || !twelfthHidden || !graduationHidden) return;
 
     const tenthList = document.getElementById('tenth-subject-list');
     const twelfthList = document.getElementById('twelfth-subject-list');
-    const currentList = document.getElementById('current-subject-list');
-    const previousList = document.getElementById('previous-subject-list');
+    const graduationList = document.getElementById('graduation-subject-list');
 
     parseSubjectPairs(tenthHidden.value).forEach((item) => tenthList.appendChild(createSubjectRow(item.subject, item.marks, 'tenth')));
     parseSubjectPairs(twelfthHidden.value).forEach((item) => twelfthList.appendChild(createSubjectRow(item.subject, item.marks, 'twelfth')));
-    parseSubjectPairs(previousHidden.value).forEach((item) => previousList.appendChild(createSubjectRow(item.subject, item.marks, 'previous')));
-    String(currentHidden.value || '').split('\n').map((line) => line.trim()).filter(Boolean).forEach((item) => currentList.appendChild(createSubjectRow(item, '', 'current')));
+    parseSubjectPairs(graduationHidden.value).forEach((item) => graduationList.appendChild(createSubjectRow(item.subject, item.marks, 'graduation')));
 
     if (!tenthList.children.length) tenthList.appendChild(createSubjectRow('', '', 'tenth'));
     if (!twelfthList.children.length) twelfthList.appendChild(createSubjectRow('', '', 'twelfth'));
-    if (!previousList.children.length) previousList.appendChild(createSubjectRow('', '', 'previous'));
-    if (!currentList.children.length) currentList.appendChild(createSubjectRow('', '', 'current'));
+    if (!graduationList.children.length) graduationList.appendChild(createSubjectRow('', '', 'graduation'));
 
     const addTenth = document.getElementById('add-tenth-subject-btn');
     const addTwelfth = document.getElementById('add-twelfth-subject-btn');
-    const addPrevious = document.getElementById('add-previous-subject-btn');
-    const addCurrent = document.getElementById('add-current-subject-btn');
+    const addGraduation = document.getElementById('add-graduation-subject-btn');
 
     if (addTenth) addTenth.addEventListener('click', function () {
       tenthList.appendChild(createSubjectRow('', '', 'tenth'));
@@ -810,19 +801,14 @@
       twelfthList.appendChild(createSubjectRow('', '', 'twelfth'));
       syncSubjectPairs('twelfth-subjects-hidden', 'twelfth-subject-list');
     });
-    if (addPrevious) addPrevious.addEventListener('click', function () {
-      previousList.appendChild(createSubjectRow('', '', 'previous'));
-      syncSubjectPairs('previous-subjects-hidden', 'previous-subject-list');
-    });
-    if (addCurrent) addCurrent.addEventListener('click', function () {
-      currentList.appendChild(createSubjectRow('', '', 'current'));
-      syncCurrentSubjects();
+    if (addGraduation) addGraduation.addEventListener('click', function () {
+      graduationList.appendChild(createSubjectRow('', '', 'graduation'));
+      syncSubjectPairs('graduation-subjects-hidden', 'graduation-subject-list');
     });
 
     syncSubjectPairs('tenth-subjects-hidden', 'tenth-subject-list');
     syncSubjectPairs('twelfth-subjects-hidden', 'twelfth-subject-list');
-    syncSubjectPairs('previous-subjects-hidden', 'previous-subject-list');
-    syncCurrentSubjects();
+    syncSubjectPairs('graduation-subjects-hidden', 'graduation-subject-list');
   }
 
   initSubjectBuilder();

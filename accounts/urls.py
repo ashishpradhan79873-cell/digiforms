@@ -9,6 +9,7 @@ urlpatterns = [
     path('role-select/', views.role_select_view, name='role_select'),
     path('master-data-option/', views.master_data_option_view, name='master_data_option'),
     path('wallet/', views.wallet_view, name='wallet'),
+    path('profile-card/', views.account_profile_card_view, name='account_profile_card'),
     path('document-converter/', views.document_converter_view, name='document_converter'),
     path('document-converter/process/', views.document_converter_process_view, name='document_converter_process'),
     path('document-converter/images-to-pdf/', views.document_converter_images_to_pdf_view, name='document_converter_images_to_pdf'),

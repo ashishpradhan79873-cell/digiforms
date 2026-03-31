@@ -3,10 +3,17 @@ from . import views
 
 urlpatterns = [
     path('', views.home_router, name='home'),
+    path("terms-conditions/", views.terms_conditions, name="terms_conditions"),
+    path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
+    path("refund-policy/", views.refund_policy, name="refund_policy"),
+    path("manifest.json", views.manifest_json, name="manifest_json"),
+    path("sw.js", views.service_worker, name="service_worker"),
     path('government-vacancies/', views.dashboard, name='dashboard'),
     path("news/", views.news_hub, name="news_hub"),
     path("news/<int:news_id>/", views.news_detail, name="news_detail"),
     path("send-to-admin/", views.confirm_send_to_admin, name="confirm_send_to_admin"),
+    path("payments/cashfree/create-order/", views.cashfree_create_order, name="cashfree_create_order"),
+    path("payments/cashfree/return/", views.cashfree_return, name="cashfree_return"),
     path("send-to-admin/profile/", views.apply_profile_preview, name="apply_profile_preview"),
     path("chat/", views.user_chat, name="user_chat"),
     path("chat/clear/", views.user_chat_clear_thread, name="user_chat_clear_thread"),
@@ -120,6 +127,11 @@ urlpatterns = [
         "admin-panel/options/<int:vacancy_id>/toggle-active/",
         views.admin_toggle_vacancy_active,
         name="admin_toggle_vacancy_active",
+    ),
+    path(
+        "admin-panel/options/<int:vacancy_id>/toggle-user-hide/",
+        views.admin_toggle_vacancy_user_hide,
+        name="admin_toggle_vacancy_user_hide",
     ),
     path(
         "admin-panel/applicants/<int:application_id>/documents/demo/<str:doc_type>/",

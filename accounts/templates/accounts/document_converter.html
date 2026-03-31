@@ -107,6 +107,12 @@
         <option value="image/webp">WEBP</option>
       </select>
     </div>
+    <div>
+      <label class="label">Rotate</label>
+      <button id="rotateBtn" type="button" class="btn btn-soft w-full justify-center" aria-label="Rotate photo">
+        <span class="material-symbols-outlined" style="font-size:18px;">rotate_90_degrees_ccw</span>
+      </button>
+    </div>
   </div>
 
   <div class="mt-3 crop-wrap">
@@ -346,6 +352,7 @@
     const widthInput = document.getElementById("widthInput");
     const heightInput = document.getElementById("heightInput");
     const resizeFormatInput = document.getElementById("resizeFormatInput");
+    const rotateBtn = document.getElementById("rotateBtn");
     const autoWhiteCutBtn = document.getElementById("autoWhiteCutBtn");
     const convertBtn = document.getElementById("convertBtn");
     const downloadBtn = document.getElementById("downloadBtn");
@@ -358,6 +365,7 @@
     let img = null;
     let objectUrl = "";
     let downloadUrl = "";
+    let rotateDeg = 0;
     let naturalW = 0;
     let naturalH = 0;
     let displayRect = { x: 0, y: 0, w: 430, h: 260 };
@@ -368,6 +376,9 @@
     let canvasCssHeight = 260;
 
     function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
+    function rotatedSourceSize() {
+      return rotateDeg % 180 === 0 ? { w: naturalW, h: naturalH } : { w: naturalH, h: naturalW };
+    }
     function resizeCropCanvas() {
       const wrap = cropCanvas.parentElement;
       const wrapWidth = wrap ? Math.max(Math.floor(wrap.clientWidth), 220) : 430;
@@ -395,8 +406,9 @@
       cropRect = { x: Math.round(b.x + b.w * 0.04), y: Math.round(b.y + b.h * 0.04), w: Math.round(b.w * 0.92), h: Math.round(b.h * 0.92) };
     }
     function cropStats() {
-      const scaleX = naturalW / Math.max(displayRect.w, 1);
-      const scaleY = naturalH / Math.max(displayRect.h, 1);
+      const src = rotatedSourceSize();
+      const scaleX = src.w / Math.max(displayRect.w, 1);
+      const scaleY = src.h / Math.max(displayRect.h, 1);
       const left = Math.max(Math.round((cropRect.x - displayRect.x) * scaleX), 0);
       const top = Math.max(Math.round((cropRect.y - displayRect.y) * scaleY), 0);
       const right = Math.max(Math.round((displayRect.x + displayRect.w - (cropRect.x + cropRect.w)) * scaleX), 0);
@@ -418,7 +430,8 @@
         return;
       }
       const canvasRatio = canvasW / canvasH;
-      const imgRatio = naturalW / naturalH;
+      const src = rotatedSourceSize();
+      const imgRatio = src.w / src.h;
       if (imgRatio > canvasRatio) {
         displayRect.w = canvasW;
         displayRect.h = Math.round(displayRect.w / imgRatio);
@@ -432,7 +445,15 @@
       }
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.drawImage(img, displayRect.x, displayRect.y, displayRect.w, displayRect.h);
+      ctx.save();
+      ctx.translate(displayRect.x + displayRect.w / 2, displayRect.y + displayRect.h / 2);
+      if (rotateDeg) ctx.rotate((rotateDeg * Math.PI) / 180);
+      if (rotateDeg % 180 === 0) {
+        ctx.drawImage(img, -displayRect.w / 2, -displayRect.h / 2, displayRect.w, displayRect.h);
+      } else {
+        ctx.drawImage(img, -displayRect.h / 2, -displayRect.w / 2, displayRect.h, displayRect.w);
+      }
+      ctx.restore();
       ctx.strokeStyle = "#16a34a";
       ctx.lineWidth = 2;
       ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
@@ -537,6 +558,7 @@
         img = image;
         naturalW = image.width;
         naturalH = image.height;
+        rotateDeg = 0;
         resizeCropCanvas();
         draw();
         resetCropRect();
@@ -553,6 +575,14 @@
       cropRect = { x: b.x, y: b.y, w: b.w, h: b.h };
       draw();
     });
+
+    if (rotateBtn) {
+      rotateBtn.addEventListener("click", () => {
+        rotateDeg = (rotateDeg + 90) % 360;
+        resetCropRect();
+        draw();
+      });
+    }
 
     cropCanvas.addEventListener("mousedown", onPointerDown);
     cropCanvas.addEventListener("mousemove", onPointerMove);
@@ -573,6 +603,7 @@
       fd.append("file", selectedFile);
       fd.append("target_kb", String(targetKb));
       fd.append("out_type", outType);
+      fd.append("rotate_deg", String(rotateDeg));
       fd.append("width", String(reqW));
       fd.append("height", String(reqH));
       fd.append("quality_lock", "1");

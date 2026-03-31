@@ -26,6 +26,10 @@ NAME_LABELS = {
     "confirm_send_to_admin": "Apply Form",
     "user_chat": "Chat With Admin",
     "wallet": "Wallet",
+    "account_profile_card": "Profile & Legal",
+    "terms_conditions": "Terms & Conditions",
+    "privacy_policy": "Privacy Policy",
+    "refund_policy": "Refund Policy",
 }
 
 

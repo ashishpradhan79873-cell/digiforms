@@ -4,14 +4,19 @@ import json
 import zipfile
 import re
 import logging
+import uuid
+import mimetypes
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from datetime import date, timedelta
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
+from django.contrib.staticfiles import finders
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -34,6 +39,44 @@ from accounts.models import (
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+
+def manifest_json(request):
+    manifest = {
+        "name": "DigiForm",
+        "short_name": "DigiForm",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#ffffff",
+        "theme_color": "#0d6efd",
+        "icons": [
+            {
+                "src": "/static/icons/icon-192.png?v=digiform-2",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+            {
+                "src": "/static/icons/icon-512.png?v=digiform-2",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+        ],
+    }
+    return JsonResponse(manifest, content_type="application/manifest+json")
+
+
+def service_worker(request):
+    sw_path = finders.find("sw.js")
+    if not sw_path:
+        return HttpResponse("// Service worker not found", content_type="application/javascript", status=404)
+    with open(sw_path, "r", encoding="utf-8") as sw_file:
+        response = HttpResponse(sw_file.read(), content_type="application/javascript")
+    response["Service-Worker-Allowed"] = "/"
+    response["Cache-Control"] = "no-cache"
+    return response
 
 
 DEFAULT_CATALOG = [
@@ -92,7 +135,7 @@ PROFILE_DATA_STEPS = [
     ("address", "Address Details"),
     ("academic", "Academic Details"),
     ("college", "College Details"),
-    ("bank", "Bank Details"),
+    ("bank", "Card Details"),
     ("subject", "Subject Details"),
     ("documents", "Document Upload"),
 ]
@@ -151,10 +194,20 @@ def _collect_doc_editor_inputs(request):
 
 def _collect_field_editor_inputs(request):
     values = []
-    for raw in request.POST.getlist("field_name[]"):
+    raw_names = request.POST.getlist("field_name[]")
+    raw_types = request.POST.getlist("field_type[]")
+    raw_comments = request.POST.getlist("field_comment[]")
+    for idx, raw in enumerate(raw_names):
         v = str(raw or "").strip()
+        comment = str(raw_comments[idx] if idx < len(raw_comments) else "").strip()
         if v:
-            values.append(v)
+            t = str(raw_types[idx] if idx < len(raw_types) else "FIELD").strip().upper()
+            if t == "COMMENT":
+                values.append(f"COMMENT|{v}")
+            elif comment:
+                values.append(f"{v}||{comment}")
+            else:
+                values.append(v)
     return values
 
 
@@ -183,6 +236,12 @@ def _parse_required_doc_name(raw_value):
     if value.startswith("DOC|"):
         return "Document", value[4:].strip()
     return "Document", value
+
+
+def _norm_doc_key(value):
+    raw = str(value or "").strip().lower()
+    raw = raw.replace("required", "").replace("document", "").replace("photo", "")
+    return "".join(ch for ch in raw if ch.isalnum())
 
 
 def _norm_field_key(value):
@@ -255,7 +314,15 @@ def _build_requested_profile_rows(step_data, required_profile_fields):
     grouped = {key: [] for key, _ in PROFILE_DATA_STEPS if key != "documents"}
     used_idx = set()
     for req in requested:
-        req_norm = _norm_field_key(req)
+        if req.startswith("COMMENT|"):
+            grouped["personal"].append((req, "", ""))
+            continue
+        req_label, req_help = (req.split("||", 1) + [""])[:2] if "||" in req else (req, "")
+        req_label = str(req_label).strip()
+        req_help = str(req_help).strip()
+        if not req_label:
+            continue
+        req_norm = _norm_field_key(req_label)
         best_idx = None
         for alias in _alias_norms(req_norm):
             for idx, item in enumerate(all_candidates):
@@ -279,9 +346,9 @@ def _build_requested_profile_rows(step_data, required_profile_fields):
         if best_idx is not None:
             used_idx.add(best_idx)
             match = all_candidates[best_idx]
-            grouped[match["step"]].append((req, match["value"]))
+            grouped[match["step"]].append((req_label, match["value"], req_help))
         else:
-            grouped["personal"].append((req, ""))
+            grouped["personal"].append((req_label, "", req_help))
 
     return {k: v for k, v in grouped.items() if v}
 
@@ -301,11 +368,25 @@ def _merge_unique_casefold(values):
     return merged
 
 
+def _parse_profile_field_entry(raw_item):
+    text = str(raw_item or "").strip()
+    if not text:
+        return {"kind": "FIELD", "label": "", "comment": ""}
+    if text.startswith("COMMENT|"):
+        return {"kind": "COMMENT", "label": text[8:].strip(), "comment": ""}
+    if "||" in text:
+        label, comment = text.split("||", 1)
+        return {"kind": "FIELD", "label": label.strip(), "comment": comment.strip()}
+    return {"kind": "FIELD", "label": text, "comment": ""}
+
+
 def _normalize_visibility_key(value):
     return "".join(ch for ch in str(value or "").strip().lower() if ch.isalnum())
 
 
 def _vacancy_visible_to_profile(vacancy, profile):
+    if getattr(vacancy, "hidden_from_users", False):
+        return False
     allowed = getattr(vacancy, "visible_to_users", []) or []
     if not allowed:
         return True
@@ -457,6 +538,18 @@ def home_router(request):
     return redirect("login")
 
 
+def terms_conditions(request):
+    return render(request, "legal/terms_conditions.html")
+
+
+def privacy_policy(request):
+    return render(request, "legal/privacy_policy.html")
+
+
+def refund_policy(request):
+    return render(request, "legal/refund_policy.html")
+
+
 def _is_admin_user(user):
     return bool(user and (user.is_superuser or user.is_staff))
 
@@ -479,9 +572,6 @@ def _seed_default_vacancies():
             },
         )
         updates = []
-        if not vacancy.is_active:
-            vacancy.is_active = True
-            updates.append("is_active")
         if not vacancy.icon_name:
             vacancy.icon_name = item["icon_name"]
             updates.append("icon_name")
@@ -534,6 +624,180 @@ def _upi_deep_link(setting):
     if setting.note:
         params.append(f"tn={quote_plus(setting.note.strip())}")
     return "upi://pay?" + "&".join(params)
+
+
+def _cashfree_enabled():
+    return bool(
+        getattr(settings, "CASHFREE_ENABLED", False)
+        and getattr(settings, "CASHFREE_CLIENT_ID", "")
+        and getattr(settings, "CASHFREE_CLIENT_SECRET", "")
+    )
+
+
+def _cashfree_amount(setting):
+    try:
+        amount = Decimal(getattr(setting, "amount", 0) or 0)
+    except (InvalidOperation, TypeError, ValueError):
+        amount = Decimal("0")
+    if amount <= 0:
+        amount = Decimal("100")
+    return amount.quantize(Decimal("0.01"))
+
+
+def _cashfree_phone(profile):
+    digits = "".join(ch for ch in str(getattr(profile, "mobile", "") or "") if ch.isdigit())
+    if len(digits) >= 10:
+        return digits[-10:]
+    return "9999999999"
+
+
+def _cashfree_email(profile):
+    value = str(getattr(profile, "email", "") or "").strip()
+    if value and "@" in value:
+        return value
+    username = profile.user.username if getattr(profile, "user", None) else "user"
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "", username) or "user"
+    return f"{safe}@digiform.local"
+
+
+def _cashfree_headers():
+    return {
+        "Content-Type": "application/json",
+        "accept": "application/json",
+        "x-client-id": settings.CASHFREE_CLIENT_ID,
+        "x-client-secret": settings.CASHFREE_CLIENT_SECRET,
+        "x-api-version": settings.CASHFREE_API_VERSION,
+    }
+
+
+def _cashfree_api_request(method, path, payload=None):
+    if not _cashfree_enabled():
+        raise RuntimeError("Cashfree credentials configured nahi hain.")
+    raw_body = None
+    if payload is not None:
+        raw_body = json.dumps(payload).encode("utf-8")
+    req = urlrequest.Request(
+        f"{settings.CASHFREE_API_BASE}{path}",
+        data=raw_body,
+        headers=_cashfree_headers(),
+        method=method.upper(),
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {}
+    except urlerror.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        logger.exception("Cashfree HTTP error: %s", body)
+        try:
+            data = json.loads(body)
+            message = data.get("message") or data.get("error_description") or body
+        except Exception:
+            message = body or str(exc)
+        raise RuntimeError(message or "Cashfree request failed.")
+    except urlerror.URLError as exc:
+        logger.exception("Cashfree URL error")
+        raise RuntimeError(f"Cashfree se connect nahi ho paya: {exc.reason}")
+
+
+def _extract_apply_submission(request, profile, vacancy):
+    step_data = _profile_step_data(profile)
+    required_profile_fields = [
+        item for item in (vacancy.required_profile_fields or [])
+        if str(item or "").strip()
+    ]
+    required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
+    required_doc_rows = _build_required_doc_rows(
+        profile,
+        required_docs,
+        step_data=step_data,
+        required_profile_fields=required_profile_fields,
+    )
+    requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
+    use_requested_only = bool(required_profile_fields)
+    payload = {}
+    selected_steps = []
+
+    for step_key, _ in PROFILE_DATA_STEPS:
+        if step_key == "documents":
+            continue
+        rows = requested_profile_rows.get(step_key, []) if use_requested_only else step_data.get(step_key, [])
+        out_rows = []
+        for idx, row in enumerate(rows):
+            label = row[0]
+            current_value = row[1] or ""
+            if request.POST.get(f"select__{step_key}__{idx}") != "1":
+                continue
+            posted_value = request.POST.get(f"field__{step_key}__{idx}", current_value)
+            out_rows.append({"label": label, "value": posted_value})
+        if out_rows:
+            payload[step_key] = out_rows
+            selected_steps.append(step_key)
+
+    selected_vac_docs = []
+    for row in required_doc_rows:
+        if request.POST.get(row["checkbox_name"]) != "1":
+            continue
+        posted_value = request.POST.get(row["input_name"], row.get("value", "") or "").strip()
+        uploaded = request.FILES.get(row["file_input_name"])
+        if uploaded:
+            file_url = _save_profile_document(profile, row["label"], uploaded)
+            posted_value = file_url or posted_value or "Uploaded"
+        if not posted_value:
+            posted_value = row.get("value", "") or ""
+        if posted_value:
+            selected_vac_docs.append({"label": row["label"], "value": posted_value})
+    if selected_vac_docs:
+        selected_steps.append("documents")
+
+    return {
+        "payload": payload,
+        "selected_steps": selected_steps,
+        "selected_vac_docs": selected_vac_docs,
+        "required_doc_rows": required_doc_rows,
+        "use_requested_only": use_requested_only,
+    }
+
+
+def _persist_application_submission(profile, vacancy, payload, selected_steps, selected_vac_docs):
+    payload_to_store = dict(payload or {})
+    if selected_vac_docs:
+        payload_to_store["vacancy_required_documents"] = list(selected_vac_docs)
+    step_names = {key: label for key, label in PROFILE_DATA_STEPS}
+    selected_labels = [step_names.get(key, key) for key in selected_steps if key in step_names]
+    summary_line = "Selected Data: " + ", ".join(selected_labels)
+    if selected_vac_docs:
+        summary_line += " | Vacancy Docs: " + ", ".join([x["label"] for x in selected_vac_docs])
+    payload_line = "Payload JSON: " + json.dumps(payload_to_store, ensure_ascii=True)
+
+    app, created = Application.objects.get_or_create(profile=profile, vacancy=vacancy)
+    if app.status == Application.STATUS_CANCELLED:
+        app.status = Application.STATUS_PENDING
+        app.cancelled_at = None
+    app.remarks = summary_line + "\n" + payload_line
+    app.save()
+    return app, created
+
+
+def _cashfree_build_order(request, profile, vacancy, setting):
+    amount = _cashfree_amount(setting)
+    order_id = f"df_{vacancy.id}_{profile.id}_{uuid.uuid4().hex[:12]}"
+    payload = {
+        "order_id": order_id,
+        "order_amount": float(amount),
+        "order_currency": "INR",
+        "customer_details": {
+            "customer_id": f"profile_{profile.id}",
+            "customer_name": (profile.full_name or profile.user.username or "Digi Form User")[:60],
+            "customer_email": _cashfree_email(profile),
+            "customer_phone": _cashfree_phone(profile),
+        },
+        "order_meta": {
+            "return_url": request.build_absolute_uri(reverse("cashfree_return")) + "?order_id={order_id}",
+        },
+        "order_note": (f"{vacancy.title} application fee")[:180],
+    }
+    return _cashfree_api_request("POST", "/orders", payload)
 
 
 def _normalize_external_link(value):
@@ -615,9 +879,9 @@ def _profile_step_data(profile):
             ("Enrollment Number", profile.enrollment_number),
         ],
         "bank": [
-            ("Account Holder", profile.account_holder_name),
-            ("Bank Name", profile.bank_name),
-            ("Account Number", profile.account_number),
+            ("Card Holder", profile.account_holder_name),
+            ("Card Name", profile.bank_name),
+            ("Card Number", profile.account_number),
             ("IFSC", profile.ifsc_code),
             ("Branch", profile.branch_name),
             ("Aadhaar Linked", profile.aadhaar_linked),
@@ -625,12 +889,8 @@ def _profile_step_data(profile):
         "subject": [
             ("10th Subjects", profile.tenth_subjects),
             ("12th Subjects", profile.twelfth_subjects),
-            ("Previous Course", profile.previous_course_name),
-            ("Previous Year Subjects", profile.previous_subjects),
-            ("Current Course", profile.current_course_name),
-            ("Current Year", profile.current_year),
-            ("Current Semester", profile.current_semester),
-            ("My Current Subjects", profile.current_subjects),
+            ("Graduation Details", profile.graduation),
+            ("Graduation Subjects", profile.graduation_subjects),
         ],
         "documents": (
             [("Passport Photo", profile.photo.url)] if profile.photo else []
@@ -667,12 +927,27 @@ def _extra_rows_as_text(extra_rows):
     return " | ".join(entries)
 
 
-def _attachment_kind(file_name):
+def _attachment_kind(file_ref):
+    if hasattr(file_ref, "url") or hasattr(file_ref, "name"):
+        file_name = getattr(file_ref, "name", "") or ""
+        try:
+            file_url = getattr(file_ref, "url", "") or ""
+        except Exception:
+            file_url = ""
+    else:
+        file_name = str(file_ref or "")
+        file_url = str(file_ref or "")
+
     lower_name = (file_name or "").lower()
+    lower_url = (file_url or "").lower()
     if lower_name.endswith(".pdf"):
         return "pdf"
     if lower_name.endswith(IMAGE_EXTENSIONS):
         return "image"
+    if "res.cloudinary.com" in lower_url and "/image/" in lower_url:
+        return "image"
+    if "res.cloudinary.com" in lower_url and "/raw/" in lower_url and lower_name.endswith(".pdf"):
+        return "pdf"
     return "file"
 
 
@@ -953,11 +1228,18 @@ def _decorate_chat_messages(messages_qs):
     decorated = list(messages_qs)
     for item in decorated:
         if item.attachment:
-            item.attachment_kind = _attachment_kind(item.attachment.name)
+            item.attachment_kind = _attachment_kind(item.attachment)
             item.attachment_name = item.attachment.name.split("/")[-1]
+            try:
+                item.attachment_open_url = item.attachment.url
+            except Exception:
+                item.attachment_open_url = reverse("chat_attachment_download", args=[item.id])
+            item.attachment_download_url = reverse("chat_attachment_download", args=[item.id]) + "?dl=1"
         else:
             item.attachment_kind = ""
             item.attachment_name = ""
+            item.attachment_open_url = ""
+            item.attachment_download_url = ""
     return decorated
 
 
@@ -997,9 +1279,9 @@ def _chat_message_payload(msg):
         "time": msg.created_at.strftime("%H:%M"),
         "attachment": {
             "url": attachment_url,
-            "open_url": reverse("chat_attachment_download", args=[msg.id]) if msg.attachment else "",
+            "open_url": attachment_url or (reverse("chat_attachment_download", args=[msg.id]) if msg.attachment else ""),
             "name": _file_download_name(msg.attachment) if msg.attachment else "",
-            "kind": _attachment_kind(msg.attachment.name) if msg.attachment else "",
+            "kind": _attachment_kind(msg.attachment) if msg.attachment else "",
             "download_url": (reverse("chat_attachment_download", args=[msg.id]) + "?dl=1") if msg.attachment else "",
         },
     }
@@ -1042,6 +1324,45 @@ def _rows_from_payload(payload, key, fallback_rows):
     return output or fallback_rows
 
 
+def _payload_rows_flat(payload):
+    if not isinstance(payload, dict):
+        return []
+    out = []
+    for key, val in payload.items():
+        if not isinstance(val, list):
+            continue
+        for item in val:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            value = str(item.get("value", "")).strip()
+            if label or value:
+                out.append((label, value))
+    return out
+
+
+def _payload_first_value(payload, *needles):
+    rows = _payload_rows_flat(payload)
+    if not rows:
+        return ""
+    norm_needles = [_norm_field_key(x) for x in needles if str(x).strip()]
+    for label, value in rows:
+        norm_label = _norm_field_key(label)
+        if any(n and (n in norm_label or norm_label in n) for n in norm_needles):
+            return value
+    return ""
+
+
+def _is_probable_image_url(title, url):
+    lower_title = str(title or "").strip().lower()
+    lower_url = str(url or "").strip().lower().split("?", 1)[0]
+    if any(lower_url.endswith(ext) for ext in IMAGE_EXTENSIONS):
+        return True
+    if "res.cloudinary.com" in lower_url and "/image/" in lower_url:
+        return True
+    return any(token in lower_title for token in ["photo", "signature", "image", "passport"])
+
+
 def _selected_payload(profile, selected_steps):
     all_data = _profile_step_data(profile)
     payload = {}
@@ -1053,8 +1374,7 @@ def _selected_payload(profile, selected_steps):
 
 def _inject_required_docs_rows(profile, vacancy, step_data):
     required_docs = vacancy.required_documents or DEFAULT_REQUIRED_DOCS
-    document_rows = list(step_data.get("documents", []))
-    existing_labels = {str(label).strip().lower() for label, _ in document_rows}
+    existing_labels = set()
 
     available = {}
     if profile.photo:
@@ -1078,12 +1398,14 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
     def _find_doc_value(doc_name):
         _, clean_doc_name = _parse_required_doc_name(doc_name)
         key = clean_doc_name.lower()
+        norm_key = _norm_doc_key(clean_doc_name)
         if not key:
             return ""
         if key in available:
             return available[key]
         for title, url in available.items():
-            if key in title or title in key:
+            norm_title = _norm_doc_key(title)
+            if key in title or title in key or (norm_key and (norm_key in norm_title or norm_title in norm_key)):
                 return url
         return ""
 
@@ -1102,9 +1424,7 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
         row_label = f"Required ({doc_kind}): {clean_name}"
         if row_label.strip().lower() in existing_labels:
             continue
-        document_rows.append((row_label, _find_doc_value(clean_name)))
-
-    step_data["documents"] = document_rows
+        existing_labels.add(row_label.strip().lower())
     return required_docs
 
 
@@ -1139,10 +1459,12 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
         if doc_kind == "Data":
             continue
         key = clean_name.lower()
+        norm_key = _norm_doc_key(clean_name)
         value = available.get(key, "")
         if not value:
             for title, url in available.items():
-                if key in title or title in key:
+                norm_title = _norm_doc_key(title)
+                if key in title or title in key or (norm_key and (norm_key in norm_title or norm_title in norm_key)):
                     value = url
                     break
         if not value:
@@ -1293,7 +1615,7 @@ def _flatten_application_row(application):
         "Course": profile.course,
         "Year/Semester": profile.year_semester,
         "Enrollment Number": profile.enrollment_number,
-        "Bank Name": profile.bank_name,
+        "Card Name": profile.bank_name,
         "Account Holder": profile.account_holder_name,
         "Account Number": profile.account_number,
         "IFSC": profile.ifsc_code,
@@ -1302,7 +1624,7 @@ def _flatten_application_row(application):
         "Address Extra Rows": _extra_rows_as_text(profile.address_extra_rows),
         "Academic Extra Rows": _extra_rows_as_text(profile.academic_extra_rows),
         "College Extra Rows": _extra_rows_as_text(profile.college_extra_rows),
-        "Bank Extra Rows": _extra_rows_as_text(profile.bank_extra_rows),
+        "Card Extra Rows": _extra_rows_as_text(profile.bank_extra_rows),
     }
 
 
@@ -1333,7 +1655,7 @@ def student_services_dashboard(request):
     _seed_default_vacancies()
     services = [
         item
-        for item in Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_STUDENT).order_by(
+        for item in Vacancy.objects.filter(category=Vacancy.CATEGORY_STUDENT).order_by(
             "display_order", "last_date", "id"
         )
         if _vacancy_visible_to_profile(item, profile)
@@ -1375,11 +1697,13 @@ def apply_student_service(request, vacancy_id):
     vacancy = get_object_or_404(
         Vacancy,
         id=vacancy_id,
-        is_active=True,
         category=Vacancy.CATEGORY_STUDENT,
     )
     if not _vacancy_visible_to_profile(vacancy, profile):
         messages.error(request, "Ye student option is user ke liye active nahi hai.")
+        return redirect("student_services_dashboard")
+    if not vacancy.is_active:
+        messages.error(request, "Ye student form abhi deactivated hai.")
         return redirect("student_services_dashboard")
     profile_draft = _get_profile_draft(profile, vacancy.id)
     started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
@@ -1403,7 +1727,7 @@ def dashboard(request):
     _seed_default_vacancies()
     vacancies = [
         item
-        for item in Vacancy.objects.filter(is_active=True, category=Vacancy.CATEGORY_GOVERNMENT).order_by(
+        for item in Vacancy.objects.filter(category=Vacancy.CATEGORY_GOVERNMENT).order_by(
             "display_order", "last_date", "id"
         )
         if _vacancy_visible_to_profile(item, profile)
@@ -1487,11 +1811,13 @@ def apply_vacancy(request, vacancy_id):
     vacancy = get_object_or_404(
         Vacancy,
         id=vacancy_id,
-        is_active=True,
         category=Vacancy.CATEGORY_GOVERNMENT,
     )
     if not _vacancy_visible_to_profile(vacancy, profile):
         messages.error(request, "Ye vacancy is user ke liye active nahi hai.")
+        return redirect("dashboard")
+    if not vacancy.is_active:
+        messages.error(request, "Ye vacancy abhi deactivated hai.")
         return redirect("dashboard")
     profile_draft = _get_profile_draft(profile, vacancy.id)
     started_at = str(profile_draft.get("started_at", "")).strip() or timezone.now().isoformat()
@@ -1519,6 +1845,12 @@ def confirm_send_to_admin(request):
     lock_active = False
     timed_out_active = False
     vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
+    if not vacancy.is_active:
+        request.session.pop("pending_form_apply", None)
+        messages.error(request, "Ye vacancy abhi deactivated hai.")
+        if vacancy.category == Vacancy.CATEGORY_STUDENT:
+            return redirect("student_services_dashboard")
+        return redirect("dashboard")
     if not _vacancy_visible_to_profile(vacancy, profile):
         request.session.pop("pending_form_apply", None)
         messages.error(request, "Ye vacancy ab is user ke liye available nahi hai.")
@@ -1554,53 +1886,10 @@ def confirm_send_to_admin(request):
                 messages.error(request, "Form send karne se pehle dono disclaimer tick karna zaroori hai.")
                 return redirect("confirm_send_to_admin")
 
-        step_data = _profile_step_data(profile)
-        # masking disabled
-        required_profile_fields = [
-            item for item in (vacancy.required_profile_fields or [])
-            if str(item or "").strip()
-        ]
-        required_docs = _inject_required_docs_rows(profile, vacancy, step_data)
-        required_doc_rows = _build_required_doc_rows(
-            profile,
-            required_docs,
-            step_data=step_data,
-            required_profile_fields=required_profile_fields,
-        )
-        requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
-        use_requested_only = bool(required_profile_fields)
-
-        payload = {}
-        for step_key, _ in PROFILE_DATA_STEPS:
-            if step_key == "documents":
-                continue
-            rows = requested_profile_rows.get(step_key, []) if use_requested_only else step_data.get(step_key, [])
-            out_rows = []
-            for idx, row in enumerate(rows):
-                label = row[0]
-                current_value = row[1] or ""
-                if request.POST.get(f"select__{step_key}__{idx}") != "1":
-                    continue
-                posted_value = request.POST.get(f"field__{step_key}__{idx}", current_value)
-                out_rows.append({"label": label, "value": posted_value})
-            if out_rows:
-                payload[step_key] = out_rows
-                selected_steps.append(step_key)
-        selected_vac_docs = []
-        for row in required_doc_rows:
-            if request.POST.get(row["checkbox_name"]) != "1":
-                continue
-            posted_value = request.POST.get(row["input_name"], row.get("value", "") or "").strip()
-            uploaded = request.FILES.get(row["file_input_name"])
-            if uploaded:
-                file_url = _save_profile_document(profile, row["label"], uploaded)
-                posted_value = file_url or posted_value or "Uploaded"
-            if not posted_value:
-                posted_value = row.get("value", "") or ""
-            if posted_value:
-                selected_vac_docs.append({"label": row["label"], "value": posted_value})
-        if selected_vac_docs:
-            selected_steps.append("documents")
+        submission = _extract_apply_submission(request, profile, vacancy)
+        payload = submission["payload"]
+        selected_steps = submission["selected_steps"]
+        selected_vac_docs = submission["selected_vac_docs"]
         if submit_mode == "save_only":
             pending["draft_payload"] = payload
             pending["draft_vacancy_docs"] = selected_vac_docs
@@ -1626,21 +1915,7 @@ def confirm_send_to_admin(request):
         if not payload and not selected_vac_docs:
             messages.error(request, "Koi data available nahi hai. Admin panel se vacancy ke liye fields/docs add karo.")
             return redirect("confirm_send_to_admin")
-        step_names = {
-            key: label for key, label in PROFILE_DATA_STEPS
-        }
-        selected_labels = [step_names.get(key, key) for key in selected_steps if key in step_names]
-        summary_line = "Selected Data: " + ", ".join(selected_labels)
-        if selected_vac_docs:
-            summary_line += " | Vacancy Docs: " + ", ".join([x["label"] for x in selected_vac_docs])
-        payload_line = "Payload JSON: " + json.dumps(payload, ensure_ascii=True)
-
-        app, created = Application.objects.get_or_create(profile=profile, vacancy=vacancy)
-        if app.status == Application.STATUS_CANCELLED:
-            app.status = Application.STATUS_PENDING
-            app.cancelled_at = None
-        app.remarks = (summary_line + "\n" + payload_line)[:4000]
-        app.save()
+        app, created = _persist_application_submission(profile, vacancy, payload, selected_steps, selected_vac_docs)
 
         _clear_profile_draft(profile, vacancy.id)
         request.session.pop("pending_form_apply", None)
@@ -1709,14 +1984,17 @@ def confirm_send_to_admin(request):
         for idx, row in enumerate(rows):
             row_label = row[0]
             row_value = row[1] or ""
+            row_help = row[2] if len(row) > 2 else ""
             should_check = True
             row_items.append(
                 {
-                    "label": row_label,
+                    "label": row_label[8:] if str(row_label).startswith("COMMENT|") else row_label,
                     "value": row_value,
+                    "help_text": row_help,
                     "input_name": f"field__{key}__{idx}",
                     "checkbox_name": f"select__{key}__{idx}",
                     "checked": should_check,
+                    "is_comment": str(row_label).startswith("COMMENT|"),
                 }
             )
         step_cards.append(
@@ -1741,6 +2019,8 @@ def confirm_send_to_admin(request):
             "required_doc_rows": required_doc_rows,
             "payment_setting": payment_setting,
             "payment_upi_link": payment_upi_link,
+            "cashfree_enabled": _cashfree_enabled(),
+            "cashfree_mode": getattr(settings, "CASHFREE_MODE", "sandbox"),
             "use_requested_only": use_requested_only,
             # kept for backward compat if templates reference these keys in future
             "autofill_lock_active": False,
@@ -1752,12 +2032,130 @@ def confirm_send_to_admin(request):
 
 
 @login_required
+def cashfree_create_order(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required."}, status=405)
+    pending = request.session.get("pending_form_apply")
+    if not pending:
+        return JsonResponse({"error": "Pehle koi vacancy select karo."}, status=400)
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    vacancy = get_object_or_404(Vacancy, id=pending.get("vacancy_id"))
+    if not vacancy.is_active:
+        request.session.pop("pending_form_apply", None)
+        return JsonResponse({"error": "Ye vacancy abhi deactivated hai."}, status=400)
+    if not _vacancy_visible_to_profile(vacancy, profile):
+        return JsonResponse({"error": "Ye vacancy is user ke liye available nahi hai."}, status=403)
+    if not _cashfree_enabled():
+        return JsonResponse({"error": "Cashfree sandbox config set nahi hai."}, status=500)
+
+    consent_1 = request.POST.get("consent_data_usage") == "1"
+    consent_2 = request.POST.get("consent_user_responsibility") == "1"
+    if not (consent_1 and consent_2):
+        return JsonResponse({"error": "Payment se pehle dono disclaimer tick karna zaroori hai."}, status=400)
+
+    submission = _extract_apply_submission(request, profile, vacancy)
+    payload = submission["payload"]
+    selected_steps = submission["selected_steps"]
+    selected_vac_docs = submission["selected_vac_docs"]
+    if not payload and not selected_vac_docs:
+        return JsonResponse({"error": "Payment se pehle kam se kam required data select karo."}, status=400)
+
+    mode = request.POST.get("payment_mode", "pay").strip().lower()
+    if mode not in {"pay", "pay_and_apply"}:
+        mode = "pay"
+
+    setting = _active_payment_setting()
+    try:
+        order_data = _cashfree_build_order(request, profile, vacancy, setting)
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    payment_session_id = str(order_data.get("payment_session_id", "")).strip()
+    order_id = str(order_data.get("order_id", "")).strip()
+    if not payment_session_id or not order_id:
+        return JsonResponse({"error": "Cashfree se valid payment session nahi mila."}, status=500)
+
+    pending["draft_payload"] = payload
+    pending["draft_vacancy_docs"] = selected_vac_docs
+    pending["last_edit_at"] = timezone.now().isoformat()
+    request.session["pending_form_apply"] = pending
+    _save_profile_draft(profile, vacancy.id, payload, selected_vac_docs, pending.get("started_at", ""))
+    request.session["cashfree_pending_payment"] = {
+        "order_id": order_id,
+        "payment_mode": mode,
+        "vacancy_id": vacancy.id,
+        "kind": pending.get("kind", ""),
+        "payload": payload,
+        "selected_steps": selected_steps,
+        "selected_vac_docs": selected_vac_docs,
+    }
+    request.session.modified = True
+    return JsonResponse(
+        {
+            "ok": True,
+            "payment_session_id": payment_session_id,
+            "order_id": order_id,
+            "mode": getattr(settings, "CASHFREE_MODE", "sandbox"),
+        }
+    )
+
+
+@login_required
+def cashfree_return(request):
+    order_id = str(request.GET.get("order_id", "")).strip()
+    if not order_id:
+        messages.error(request, "Cashfree order id missing hai.")
+        return redirect("confirm_send_to_admin")
+    session_data = request.session.get("cashfree_pending_payment") or {}
+    if session_data and session_data.get("order_id") != order_id:
+        messages.error(request, "Cashfree payment session mismatch hai.")
+        return redirect("confirm_send_to_admin")
+    try:
+        order_data = _cashfree_api_request("GET", f"/orders/{order_id}")
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+        return redirect("confirm_send_to_admin")
+
+    payment_status = str(order_data.get("order_status", "")).upper()
+    if payment_status != "PAID":
+        messages.warning(request, f"Payment status abhi {payment_status or 'UNKNOWN'} hai. Try again ya thodi der baad check karo.")
+        return redirect("confirm_send_to_admin")
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    vacancy = get_object_or_404(Vacancy, id=session_data.get("vacancy_id"))
+    payload = session_data.get("payload") if isinstance(session_data.get("payload"), dict) else {}
+    selected_steps = session_data.get("selected_steps") if isinstance(session_data.get("selected_steps"), list) else []
+    selected_vac_docs = session_data.get("selected_vac_docs") if isinstance(session_data.get("selected_vac_docs"), list) else []
+    payment_mode = session_data.get("payment_mode", "pay")
+
+    if payment_mode == "pay_and_apply":
+        _persist_application_submission(profile, vacancy, payload, selected_steps, selected_vac_docs)
+        _clear_profile_draft(profile, vacancy.id)
+        request.session.pop("pending_form_apply", None)
+        request.session.pop("cashfree_pending_payment", None)
+        messages.success(request, "Payment successful raha aur form admin ko send ho gaya.")
+        if session_data.get("kind") == "student":
+            return redirect("student_services_dashboard")
+        return redirect("dashboard")
+
+    request.session.pop("cashfree_pending_payment", None)
+    messages.success(request, "Payment successful raha. Ab chahe to Apply Changes Send To Admin bhi kar sakte ho.")
+    return redirect("confirm_send_to_admin")
+
+
+@login_required
 def apply_profile_preview(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     pending = request.session.get("pending_form_apply") or {}
     vacancy = None
     if pending.get("vacancy_id"):
         vacancy = Vacancy.objects.filter(id=pending.get("vacancy_id")).first()
+    if vacancy and not vacancy.is_active:
+        request.session.pop("pending_form_apply", None)
+        messages.error(request, "Ye vacancy abhi deactivated hai.")
+        if vacancy.category == Vacancy.CATEGORY_STUDENT:
+            return redirect("student_services_dashboard")
+        return redirect("dashboard")
     # Autofill lock/masking disabled for now.
     timed_out_active = False
     lock_until = None
@@ -1793,17 +2191,13 @@ def apply_profile_preview(request):
         if existing_app:
             payload = _extract_payload_from_remarks(existing_app.remarks)
 
-    step_data = dict(all_step_data)
-    if draft_payload:
-        for key, rows in all_step_data.items():
-            if not isinstance(rows, list):
-                continue
-            step_data[key] = _rows_from_payload(draft_payload, key, rows)
-    elif payload:
-        for key, rows in all_step_data.items():
-            if not isinstance(rows, list):
-                continue
-            step_data[key] = _rows_from_payload(payload, key, rows)
+    step_data = {key: [] for key, _ in PROFILE_DATA_STEPS if key != "documents"}
+    active_payload = draft_payload if draft_payload else payload
+    if active_payload:
+        for key in step_data.keys():
+            step_data[key] = _rows_from_payload(active_payload, key, [])
+    else:
+        step_data = dict(all_step_data)
 
     required_doc_rows = []
     if vacancy:
@@ -1845,8 +2239,7 @@ def apply_profile_preview(request):
         if url in seen_urls:
             return
         seen_urls.add(url)
-        lower_url = url.lower()
-        kind = "image" if any(lower_url.endswith(ext) for ext in IMAGE_EXTENSIONS) else "file"
+        kind = "image" if _is_probable_image_url(title, url) else "file"
         document_links.append(
             {
                 "title": title,
@@ -1864,13 +2257,30 @@ def apply_profile_preview(request):
         return ""
 
     if not mask_for_preview:
-        for row in required_doc_rows:
-            url = _resolve_value_url(row.get("value"))
-            if not url:
-                continue
-            _push(row.get("label") or "Document", url)
+        active_doc_items = []
+        if isinstance(draft_payload, dict) and isinstance(draft_payload.get("vacancy_required_documents"), list):
+            active_doc_items = draft_payload.get("vacancy_required_documents", [])
+        elif isinstance(pending, dict) and isinstance(pending.get("draft_vacancy_docs"), list) and pending.get("draft_vacancy_docs"):
+            active_doc_items = pending.get("draft_vacancy_docs", [])
+        elif payload and isinstance(payload.get("vacancy_required_documents"), list):
+            active_doc_items = payload.get("vacancy_required_documents", [])
 
-        if payload and isinstance(payload.get("vacancy_required_documents"), list):
+        for item in active_doc_items:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "Document").strip()
+            url = _resolve_value_url(item.get("value"))
+            if url:
+                _push(label, url)
+
+        if not active_doc_items and not active_payload:
+            for row in required_doc_rows:
+                url = _resolve_value_url(row.get("value"))
+                if not url:
+                    continue
+                _push(row.get("label") or "Document", url)
+
+        if not active_doc_items and payload and isinstance(payload.get("vacancy_required_documents"), list):
             for item in payload.get("vacancy_required_documents", []):
                 if not isinstance(item, dict):
                     continue
@@ -1879,7 +2289,7 @@ def apply_profile_preview(request):
                 if url:
                     _push(label, url)
 
-        if not document_links:
+        if not document_links and not active_payload:
             photo_url = _safe_file_url(profile.photo)
             sign_url = _safe_file_url(profile.signature)
             _push("Passport Photo", photo_url)
@@ -1889,6 +2299,8 @@ def apply_profile_preview(request):
                 if not url:
                     continue
                 _push(doc.title or "Document", url)
+
+    step_data = {key: rows for key, rows in step_data.items() if rows}
 
     return render(
         request,
@@ -1960,6 +2372,9 @@ def admin_payment(request):
         {
             "setting": setting,
             "upi_link": _upi_deep_link(setting),
+            "cashfree_enabled": _cashfree_enabled(),
+            "cashfree_mode": getattr(settings, "CASHFREE_MODE", "sandbox"),
+            "cashfree_amount": _cashfree_amount(setting),
         },
     )
 
@@ -1991,6 +2406,18 @@ def admin_applicants(request):
     applications = _filtered_applications(query, status)
     for app in applications:
         app.document_links = _collect_document_links(app)
+        payload = _extract_payload_from_remarks(app.remarks)
+        app.display_full_name = (
+            _payload_first_value(payload, "Full Name", "Student Name", "Applicant Name", "Name")
+            or app.profile.full_name
+            or app.profile.user.username
+        )
+        app.display_dob = _payload_first_value(payload, "Date Of Birth", "DOB") or (
+            app.profile.dob.strftime("%Y-%m-%d") if app.profile.dob else ""
+        )
+        app.display_gender = _payload_first_value(payload, "Gender") or app.profile.get_gender_display()
+        app.display_category = _payload_first_value(payload, "Category", "Category/Caste", "Caste") or app.profile.category
+        app.display_mobile = _payload_first_value(payload, "Mobile Number", "Mobile", "Contact Info", "Mobile No") or app.profile.mobile
     history_rows = list(ApplicationHistory.objects.all()[:120])
 
     context = {
@@ -2013,6 +2440,8 @@ def admin_option_control(request, category):
         return redirect("admin_option_control", category=Vacancy.CATEGORY_GOVERNMENT)
 
     options = Vacancy.objects.filter(category=category).order_by("display_order", "last_date", "id")
+    for opt in options:
+        opt.field_rows = [_parse_profile_field_entry(item) for item in (opt.required_profile_fields or [])]
     return render(
         request,
         "portal_main/admin_option_control.html",
@@ -2605,11 +3034,16 @@ def chat_attachment_download(request, message_id):
     download_name = _file_download_name(msg.attachment)
     # dl=1 => force download; else open inline (WhatsApp style "OPEN").
     force_download = request.GET.get("dl", "").strip() in {"1", "true", "yes"}
-    return FileResponse(
+    content_type, _ = mimetypes.guess_type(download_name)
+    response = FileResponse(
         msg.attachment.open("rb"),
         as_attachment=force_download,
         filename=download_name,
+        content_type=content_type or "application/octet-stream",
     )
+    if not force_download:
+        response["Content-Disposition"] = f'inline; filename="{download_name}"'
+    return response
 
 
 @login_required
@@ -2625,7 +3059,7 @@ def admin_save_vacancy(request):
     icon_name = request.POST.get("icon_name", "").strip() or "description"
     display_order = request.POST.get("display_order", "0").strip() or "0"
     is_active = request.POST.get("is_active") == "on"
-    visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
+    hidden_from_users = request.POST.get("hidden_from_users") == "on"
     visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
     editor_docs = _collect_doc_editor_inputs(request)
     editor_fields = _collect_field_editor_inputs(request)
@@ -2663,6 +3097,7 @@ def admin_save_vacancy(request):
         icon_name=icon_name,
         display_order=order_val,
         is_active=is_active,
+        hidden_from_users=hidden_from_users,
         visible_to_users=visible_to_users,
         required_documents=required_documents,
         required_profile_fields=required_profile_fields,
@@ -2718,7 +3153,9 @@ def admin_update_vacancy(request, vacancy_id):
     last_date = request.POST.get("last_date", "").strip()
     icon_name = request.POST.get("icon_name", "").strip() or "description"
     display_order = request.POST.get("display_order", "0").strip() or "0"
-    is_active = request.POST.get("is_active") == "on"
+    is_active = vacancy.is_active if "is_active" not in request.POST else request.POST.get("is_active") == "on"
+    hidden_from_users = vacancy.hidden_from_users if "hidden_from_users" not in request.POST else request.POST.get("hidden_from_users") == "on"
+    visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
     editor_docs = _collect_doc_editor_inputs(request)
     editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
@@ -2750,6 +3187,7 @@ def admin_update_vacancy(request, vacancy_id):
     vacancy.icon_name = icon_name
     vacancy.display_order = order_val
     vacancy.is_active = is_active
+    vacancy.hidden_from_users = hidden_from_users
     vacancy.visible_to_users = visible_to_users
     vacancy.required_documents = required_documents
     vacancy.required_profile_fields = required_profile_fields
@@ -2770,11 +3208,31 @@ def admin_toggle_vacancy_active(request, vacancy_id):
     if request.method != "POST" or not _can_access_admin(request):
         return redirect("admin_applicants")
     vacancy = get_object_or_404(Vacancy, id=vacancy_id)
-    vacancy.is_active = not bool(vacancy.is_active)
+    explicit_state = request.POST.get("set_active", "").strip().lower()
+    if explicit_state in {"1", "true", "yes", "on"}:
+        vacancy.is_active = True
+    elif explicit_state in {"0", "false", "no", "off"}:
+        vacancy.is_active = False
+    else:
+        vacancy.is_active = not bool(vacancy.is_active)
     vacancy.save(update_fields=["is_active"])
     if _is_ajax_request(request):
         return JsonResponse({"ok": True, "vacancy_id": vacancy.id, "is_active": vacancy.is_active})
     messages.success(request, "Vacancy status update ho gaya.")
+    option_scope = request.POST.get("option_scope", vacancy.category)
+    return redirect("admin_option_control", category=option_scope)
+
+
+@login_required
+def admin_toggle_vacancy_user_hide(request, vacancy_id):
+    if request.method != "POST" or not _can_access_admin(request):
+        return redirect("admin_applicants")
+    vacancy = get_object_or_404(Vacancy, id=vacancy_id)
+    vacancy.hidden_from_users = not bool(vacancy.hidden_from_users)
+    vacancy.save(update_fields=["hidden_from_users"])
+    if _is_ajax_request(request):
+        return JsonResponse({"ok": True, "vacancy_id": vacancy.id, "hidden_from_users": vacancy.hidden_from_users})
+    messages.success(request, "User visibility update ho gaya.")
     option_scope = request.POST.get("option_scope", vacancy.category)
     return redirect("admin_option_control", category=option_scope)
 
@@ -2882,9 +3340,10 @@ def admin_applicant_detail_json(request, application_id):
 
     app = get_object_or_404(_application_base_queryset(), id=application_id)
     profile = app.profile
-    docs = _collect_document_links(app)
     step_data = _profile_step_data(profile)
     payload = _extract_payload_from_remarks(app.remarks)
+    use_payload_only = bool(payload)
+    docs = []
     vacancy_extra = []
     for item in payload.get("vacancy_required_documents", []):
         if not isinstance(item, dict):
@@ -2894,6 +3353,11 @@ def admin_applicant_detail_json(request, application_id):
         if not label and not value:
             continue
         vacancy_extra.append((label or "Extra Field", value))
+        if value and (str(value).startswith("/media/") or str(value).startswith("http://") or str(value).startswith("https://")):
+            docs.append({"title": label or "Document", "url": value})
+
+    if not docs and not use_payload_only:
+        docs = _collect_document_links(app)
 
     data = {
         "applicationId": app.id,
@@ -2902,11 +3366,11 @@ def admin_applicant_detail_json(request, application_id):
         "organization": app.vacancy.organization,
         "status": _status_label(app.status),
         "appliedAt": app.applied_at.strftime("%Y-%m-%d %H:%M"),
-        "personal": _rows_from_payload(payload, "personal", step_data.get("personal", [])),
-        "address": _rows_from_payload(payload, "address", step_data.get("address", [])),
-        "academic": _rows_from_payload(payload, "academic", step_data.get("academic", [])),
-        "college": _rows_from_payload(payload, "college", step_data.get("college", [])),
-        "bank": _rows_from_payload(payload, "bank", step_data.get("bank", [])),
+        "personal": _rows_from_payload(payload, "personal", [] if use_payload_only else step_data.get("personal", [])),
+        "address": _rows_from_payload(payload, "address", [] if use_payload_only else step_data.get("address", [])),
+        "academic": _rows_from_payload(payload, "academic", [] if use_payload_only else step_data.get("academic", [])),
+        "college": _rows_from_payload(payload, "college", [] if use_payload_only else step_data.get("college", [])),
+        "bank": _rows_from_payload(payload, "bank", [] if use_payload_only else step_data.get("bank", [])),
         "vacancy_extra": vacancy_extra,
         "documents": docs,
     }

@@ -19,9 +19,13 @@
   .hidden-panel { display:none; }
   .hidden-panel.open { display:block; }
   .case-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .case-btn { width:38px; height:38px; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; }
+  .case-btn-text { font-size:14px; font-weight:900; letter-spacing:.3px; }
   .step-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
   .step-toggle { display:inline-flex; align-items:center; gap:8px; border-radius:999px; border:1px solid #dbe3ef; background:#f8fafc; padding:6px 10px; font-size:12px; font-weight:800; color:#334155; }
   .select-col { display:flex; justify-content:flex-end; }
+  .comment-row { border:1px solid #bfdbfe; background:#eff6ff; color:#1e3a8a; border-radius:12px; padding:10px 12px; font-size:13px; font-weight:700; }
+  .field-help { margin-top:4px; font-size:11px; font-weight:700; color:#64748b; }
   @media (max-width: 640px) {
     .card { border-radius:10px; }
     .step-box { padding:10px; }
@@ -50,6 +54,9 @@
       <input id="selectAllEditableFields" type="checkbox" checked>
       All Select
     </label>
+    <button type="button" class="case-btn" id="selectedUppercaseBtn" title="Toggle uppercase">
+      <span class="case-btn-text">aA</span>
+    </button>
   </div>
 
   <div class="mt-4 space-y-3">
@@ -65,6 +72,9 @@
       </div>
       <div class="mt-3">
         {% for row in step.rows %}
+          {% if row.is_comment %}
+          <div class="comment-row">{{ row.label }}</div>
+          {% else %}
           <div class="row-line" data-step-row="{{ step.key }}">
             <div class="row-label">{{ row.label }}</div>
               <div class="row-value">
@@ -74,10 +84,14 @@
                   value="{{ row.value }}"
                   class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
                   data-editable-text="1"
+                  data-original-value="{{ row.value }}"
+                  inputmode="{% with lbl=row.label|lower %}{% if 'mobile' in lbl or 'aadhaar' in lbl or 'aadhar' in lbl or 'pincode' in lbl or 'roll' in lbl or 'year' in lbl or 'percentage' in lbl or 'marks' in lbl %}numeric{% else %}text{% endif %}{% endwith %}"
                 >
+                {% if row.help_text %}<div class="field-help">{{ row.help_text }}</div>{% endif %}
               </div>
             <div class="select-col"><input type="checkbox" name="{{ row.checkbox_name }}" value="1" class="editable-select-box" data-step-key="{{ step.key }}" {% if row.checked %}checked{% endif %}></div>
           </div>
+          {% endif %}
         {% endfor %}
       </div>
     </div>
@@ -123,25 +137,40 @@
 
   <div id="paymentPanel" class="mt-6 pay-box hidden-panel">
     <h2 class="text-xl font-black">Payment</h2>
-    {% if payment_setting and payment_upi_link %}
+    {% if payment_setting or cashfree_enabled %}
       <div class="text-sm font-semibold text-slate-700">
         Pay To:
-        <span class="font-black">{{ payment_setting.payee_name|default:"UPI" }}</span>
-        ({{ payment_setting.upi_id }})
+        <span class="font-black">{{ payment_setting.payee_name|default:"Digi Form Payment" }}</span>
+        {% if payment_setting.upi_id %}({{ payment_setting.upi_id }}){% endif %}
         {% if payment_setting.amount and payment_setting.amount > 0 %}
         | Amount: Rs {{ payment_setting.amount }}
+        {% elif cashfree_enabled %}
+        | Amount: Rs 100
         {% endif %}
       </div>
       {% if payment_setting.note %}
       <div class="text-xs text-slate-500 mt-1">{{ payment_setting.note }}</div>
       {% endif %}
+      {% if cashfree_enabled %}
+      <div class="mt-2 text-xs font-bold text-blue-700">Cashfree {{ cashfree_mode|title }} checkout enabled</div>
+      {% endif %}
       {% if payment_setting.qr_image %}
       <img src="{{ payment_setting.qr_image.url }}" alt="Payment QR" class="mt-2 w-40 rounded border border-slate-200">
       {% endif %}
       <div class="mt-3 flex flex-wrap gap-2">
+        {% if cashfree_enabled %}
+        <button type="button" id="cashfreePayBtn" class="pay-btn bg-blue-700 text-white">
+          <span class="material-symbols-outlined" style="font-size:16px;">account_balance_wallet</span> Pay
+        </button>
+        {% endif %}
         <button type="button" id="payAndSendBtn" class="pay-btn bg-emerald-700 text-white">
           <span class="material-symbols-outlined" style="font-size:16px;">payments</span> Pay And Apply
         </button>
+        {% if payment_upi_link %}
+        <a href="{{ payment_upi_link }}" class="pay-btn bg-slate-100 text-slate-900 border border-slate-300">
+          <span class="material-symbols-outlined" style="font-size:16px;">qr_code_2</span> Open UPI
+        </a>
+        {% endif %}
         <button type="button" id="closePaymentPanelBtn" class="pay-btn bg-slate-700 text-white">Close</button>
       </div>
       <a id="upiDeepLinkAnchor" href="{{ payment_upi_link }}" class="hidden" rel="noopener">UPI</a>
@@ -184,6 +213,9 @@
     </button>
   </div>
 </form>
+{% if cashfree_enabled %}
+<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+{% endif %}
 <script>
   (function () {
     const consentData = document.getElementById("consentDataUsage");
@@ -215,6 +247,8 @@
     }
 
     const stepSelectBoxes = Array.from(document.querySelectorAll(".step-select-all"));
+    const selectedUppercaseBtn = document.getElementById("selectedUppercaseBtn");
+    let uppercaseMode = false;
 
     if (selectAllBox) {
       selectAllBox.addEventListener("change", function () {
@@ -246,7 +280,43 @@
     });
     syncTopSelectState();
 
+    if (selectedUppercaseBtn) {
+      selectedUppercaseBtn.addEventListener("click", function () {
+        uppercaseMode = !uppercaseMode;
+        selectedUppercaseBtn.classList.toggle("bg-blue-600", uppercaseMode);
+        selectedUppercaseBtn.classList.toggle("text-white", uppercaseMode);
+        selectBoxes.forEach((box) => {
+          if (!box.checked) return;
+          const row = box.closest("[data-step-row]");
+          const input = row ? row.querySelector("input[data-editable-text='1']") : null;
+          if (!input) return;
+          if (uppercaseMode) {
+            input.setAttribute("data-case-source", input.value || "");
+            input.value = String(input.value || "").toUpperCase();
+          } else {
+            const restore = input.getAttribute("data-case-source");
+            if (restore !== null) {
+              input.value = restore;
+            }
+          }
+        });
+      });
+    }
+
+    editableInputs.forEach((input) => {
+      input.addEventListener("input", function () {
+        const help = input.parentElement ? input.parentElement.querySelector(".field-help") : null;
+        if (!help) return;
+        help.style.display = String(input.value || "").trim() ? "none" : "";
+      });
+      const help = input.parentElement ? input.parentElement.querySelector(".field-help") : null;
+      if (help && String(input.value || "").trim()) {
+        help.style.display = "none";
+      }
+    });
+
     const payBtn = document.getElementById("payAndSendBtn");
+    const cashfreePayBtn = document.getElementById("cashfreePayBtn");
     const upiAnchor = document.getElementById("upiDeepLinkAnchor");
     const paymentPanel = document.getElementById("paymentPanel");
     const openPaymentPanelBtn = document.getElementById("openPaymentPanelBtn");
@@ -262,14 +332,52 @@
         paymentPanel.classList.remove("open");
       });
     }
-    if (payBtn && upiAnchor) {
-      payBtn.addEventListener("click", function () {
+    const cashfreeEnabled = {% if cashfree_enabled %}true{% else %}false{% endif %};
+    const cashfreeMode = "{{ cashfree_mode|escapejs }}";
+    const cashfreeCreateUrl = "{% url 'cashfree_create_order' %}";
+    const csrfToken = mainForm ? mainForm.querySelector("input[name='csrfmiddlewaretoken']")?.value : "";
+    async function startCashfreeCheckout(paymentMode) {
+      const cashfreeSdk = window.Cashfree ? window.Cashfree({ mode: cashfreeMode || "sandbox" }) : null;
+      if (!mainForm || !cashfreeEnabled || !cashfreeSdk) return false;
+      const data = new FormData(mainForm);
+      data.set("payment_mode", paymentMode);
+      try {
+        const resp = await fetch(cashfreeCreateUrl, {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: data,
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.payment_session_id) {
+          alert(json.error || "Payment session create nahi ho paya.");
+          return false;
+        }
+        await cashfreeSdk.checkout({
+          paymentSessionId: json.payment_session_id,
+          redirectTarget: "_self",
+        });
+        return true;
+      } catch (err) {
+        alert("Payment start nahi ho paya. Dobara try karo.");
+        return false;
+      }
+    }
+
+    if (payBtn) {
+      payBtn.addEventListener("click", async function () {
         if (!ensureConsents()) {
           if (consentError) consentError.scrollIntoView({ behavior: "smooth", block: "center" });
           return;
         }
+        if (cashfreeEnabled) {
+          await startCashfreeCheckout("pay_and_apply");
+          return;
+        }
         const form = payBtn.closest("form");
-        if (!form) return;
+        if (!form || !upiAnchor) return;
         const modeInput = document.createElement("input");
         modeInput.type = "hidden";
         modeInput.name = "submit_mode";
@@ -277,6 +385,16 @@
         form.appendChild(modeInput);
         window.location.href = upiAnchor.href;
         setTimeout(() => form.submit(), 500);
+      });
+    }
+
+    if (cashfreePayBtn) {
+      cashfreePayBtn.addEventListener("click", async function () {
+        if (!ensureConsents()) {
+          if (consentError) consentError.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+        await startCashfreeCheckout("pay");
       });
     }
 

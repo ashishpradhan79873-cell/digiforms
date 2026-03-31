@@ -16,12 +16,32 @@
   .bubble { border-radius:28px; padding:14px 16px; max-width:86%; border:1px solid #d7dfeb; box-shadow:0 12px 28px rgba(15,23,42,.08); }
   .bubble-user { background:#dbeafe; border-color:#93c5fd; margin-left:auto; color:#0f172a; }
   .bubble-admin { background:#eef6ff; border-color:#c7dcfb; color:#0f172a; }
-  .att-image { margin-top:8px; width:220px; max-width:100%; border-radius:14px; border:1px solid #c7dcfb; display:block; background:#fff; }
+  .att-media { margin-top:8px; }
+  .att-image-wrap { position:relative; margin-top:8px; max-width:280px; border-radius:18px; overflow:hidden; border:2px solid #9ed29d; background:#fff; box-shadow:0 10px 20px rgba(15,23,42,.08); }
+  .att-image { width:100%; max-width:100%; display:block; background:#fff; object-fit:cover; cursor:default; }
+  .att-image-meta { position:absolute; right:8px; bottom:8px; display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; background:rgba(15,23,42,.58); color:#fff; font-size:11px; font-weight:800; }
   .att-box { margin-top:8px; border:1px solid #c7dcfb; background:#f7fbff; border-radius:14px; padding:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .att-meta { min-width:0; }
   .att-name { font-size:13px; font-weight:900; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .att-sub { font-size:11px; font-weight:800; color:#2563eb; }
   .att-actions { display:flex; gap:10px; font-size:12px; font-weight:900; color:#1d4ed8; white-space:nowrap; }
+  .att-pill-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .att-pill { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 13px; border-radius:999px; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.03em; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; box-shadow:0 6px 14px rgba(37,99,235,.08); }
+  .att-pill:hover { background:#dbeafe; }
+  .att-pill-primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+  .att-pill-primary:hover { background:#1d4ed8; }
+  .att-pill-dark { background:#0f172a; border-color:#0f172a; color:#fff; }
+  .att-pill-dark:hover { background:#1e293b; }
+  .preview-modal { position:fixed; inset:0; z-index:10020; display:none; align-items:center; justify-content:center; background:rgba(15,23,42,.78); padding:18px; }
+  .preview-modal.open { display:flex; }
+  .preview-card { max-width:min(92vw, 560px); width:100%; background:#fff; border-radius:20px; overflow:hidden; box-shadow:0 24px 50px rgba(15,23,42,.24); }
+  .preview-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-bottom:1px solid #e2e8f0; }
+  .preview-img { width:100%; max-height:72vh; object-fit:contain; background:#f8fafc; }
+  .preview-actions { display:flex; flex-wrap:wrap; gap:10px; padding:14px; }
+  .preview-btn { display:inline-flex; align-items:center; justify-content:center; border-radius:12px; padding:10px 14px; font-size:12px; font-weight:900; }
+  .preview-close { border:1px solid #cbd5e1; background:#fff; color:#334155; }
+  .preview-open { background:#2563eb; color:#fff; }
+  .preview-save { background:#0f172a; color:#fff; }
   .msg-line { font-size:12px; color:#8aa0bd; margin-top:6px; text-align:right; }
   .menu-wrap { position:relative; }
   .menu-btn { border:1px solid #c8d4e5; background:#fff; border-radius:10px; width:30px; height:26px; font-weight:900; color:#41536f; }
@@ -113,7 +133,10 @@
           {% if msg.attachment %}
             <div class="mt-2">
               {% if msg.attachment_kind == "image" %}
-                <img src="{% url 'chat_attachment_download' msg.id %}" alt="{{ msg.attachment_name }}" class="att-image">
+                <div class="att-image-wrap">
+                  <img src="{{ msg.attachment_open_url }}" alt="{{ msg.attachment_name }}" class="att-image">
+                  <div class="att-image-meta">{{ msg.created_at|date:"H:i" }}</div>
+                </div>
               {% elif msg.attachment_kind == "pdf" %}
                 <div class="att-box">
                   <div class="text-xs font-semibold text-rose-500">PDF DOCUMENT</div>
@@ -125,13 +148,18 @@
                   <div class="text-sm font-bold text-slate-900">{{ msg.attachment_name }}</div>
                 </div>
               {% endif %}
-              <div class="mt-2 text-xs font-bold text-blue-600">
-                <a href="{% url 'chat_attachment_download' msg.id %}?dl=1" class="underline" download>DOWNLOAD</a>
-                <a href="{% url 'chat_attachment_download' msg.id %}" target="_blank" class="ml-3 underline">OPEN</a>
+              {% if msg.from_admin %}
+              <div class="att-pill-row">
+                {% if msg.attachment_kind == "image" %}
+                <button type="button" class="att-pill att-pill-primary preview-image-btn" data-preview-src="{{ msg.attachment_open_url }}" data-preview-name="{{ msg.attachment_name }}">Preview</button>
+                {% endif %}
+                <a href="{{ msg.attachment_open_url }}" target="_blank" class="att-pill">Open</a>
+                <a href="{{ msg.attachment_download_url }}" class="att-pill att-pill-dark" download>Save As</a>
               </div>
+              {% endif %}
             </div>
           {% endif %}
-          <div class="msg-line">{{ msg.created_at|date:"H:i" }}</div>
+          {% if msg.attachment_kind != "image" %}<div class="msg-line">{{ msg.created_at|date:"H:i" }}</div>{% endif %}
         </div>
       {% empty %}
         <div class="text-sm text-slate-500">No messages yet.</div>
@@ -150,6 +178,20 @@
       <button type="submit" class="send-btn disabled:opacity-50" {% if not chat_enabled %}disabled{% endif %}>&#10148;</button>
     </form>
   </section>
+</div>
+
+<div id="imagePreviewModal" class="preview-modal">
+  <div class="preview-card">
+    <div class="preview-head">
+      <div class="truncate text-sm font-black text-slate-900" id="previewTitle">Photo Preview</div>
+      <button type="button" class="preview-btn preview-close" id="closePreviewBtn">Close</button>
+    </div>
+    <img id="previewImageEl" src="" alt="Preview" class="preview-img">
+    <div class="preview-actions">
+      <a id="previewOpenBtn" href="#" target="_blank" class="preview-btn preview-open">Open</a>
+      <a id="previewSaveBtn" href="#" download class="preview-btn preview-save">Save As</a>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -251,17 +293,18 @@
             let attachmentHtml = '';
             const a = m.attachment || {};
             if (a.download_url) {
-              const openUrl = a.url || a.open_url || (a.download_url ? a.download_url.replace('?dl=1', '') : '');
+              const openUrl = a.open_url || a.url || (a.download_url ? a.download_url.replace('?dl=1', '') : '');
               if (a.kind === 'image') {
-                attachmentHtml = `<div class="mt-2"><img src="${openUrl}" alt="${a.name || ''}" class="att-image"><div class="att-actions mt-2"><a href="${a.download_url}" class="underline" download>DOWNLOAD</a><a href="${openUrl}" target="_blank" class="underline">OPEN</a></div></div>`;
+                attachmentHtml = `<div class="att-media"><div class="att-image-wrap"><img src="${openUrl}" alt="${a.name || ''}" class="att-image"><div class="att-image-meta">${m.time || ''}</div></div></div>`;
               } else if (a.kind === 'pdf') {
-                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">PDF DOCUMENT</div><div class="att-name">${a.name || ''}</div></div><div class="att-actions"><a href="${a.download_url}" class="underline" download>DOWNLOAD</a><a href="${openUrl}" target="_blank" class="underline">OPEN</a></div></div></div>`;
+                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">PDF DOCUMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
               } else {
-                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">ATTACHMENT</div><div class="att-name">${a.name || ''}</div></div><div class="att-actions"><a href="${a.download_url}" class="underline" download>DOWNLOAD</a><a href="${openUrl}" target="_blank" class="underline">OPEN</a></div></div></div>`;
+                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">ATTACHMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
               }
             }
-            row.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="font-semibold text-sm">You</div><input type="checkbox" class="select-box message-select-box"></div>${safeMsg ? `<div class="mt-1 text-sm">${safeMsg}</div>` : ''}${attachmentHtml}<div class="msg-line">${m.time || ''}</div>`;
+            row.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="font-semibold text-sm">You</div><input type="checkbox" class="select-box message-select-box"></div>${safeMsg ? `<div class="mt-1 text-sm">${safeMsg}</div>` : ''}${attachmentHtml}${a.kind === 'image' ? '' : `<div class="msg-line">${m.time || ''}</div>`}`;
             thread.appendChild(row);
+            bindPreviewActions(row);
           }
           sendForm.reset();
           if (attachmentName) attachmentName.textContent = '';
@@ -275,6 +318,42 @@
             submitBtn.innerHTML = '&#10148;';
           }
         }
+      });
+    }
+
+    const previewModal = document.getElementById('imagePreviewModal');
+    const previewImageEl = document.getElementById('previewImageEl');
+    const previewTitle = document.getElementById('previewTitle');
+    const previewOpenBtn = document.getElementById('previewOpenBtn');
+    const previewSaveBtn = document.getElementById('previewSaveBtn');
+    const closePreviewBtn = document.getElementById('closePreviewBtn');
+    function openPreview(src, name) {
+      if (!previewModal || !previewImageEl || !previewOpenBtn || !previewSaveBtn) return;
+      previewImageEl.src = src;
+      previewTitle.textContent = name || 'Photo Preview';
+      previewOpenBtn.href = src;
+      previewSaveBtn.href = src + (src.includes('?') ? '&dl=1' : '?dl=1');
+      previewModal.classList.add('open');
+    }
+    function closePreview() {
+      if (!previewModal || !previewImageEl) return;
+      previewModal.classList.remove('open');
+      previewImageEl.src = '';
+    }
+    function bindPreviewActions(scope) {
+      (scope || document).querySelectorAll('.preview-image-btn').forEach((btn) => {
+        if (btn.dataset.previewBound === '1') return;
+        btn.dataset.previewBound = '1';
+        btn.addEventListener('click', function () {
+          openPreview(btn.getAttribute('data-preview-src') || '', btn.getAttribute('data-preview-name') || 'Photo Preview');
+        });
+      });
+    }
+    bindPreviewActions(document);
+    if (closePreviewBtn) closePreviewBtn.addEventListener('click', closePreview);
+    if (previewModal) {
+      previewModal.addEventListener('click', function (e) {
+        if (e.target === previewModal) closePreview();
       });
     }
   })();

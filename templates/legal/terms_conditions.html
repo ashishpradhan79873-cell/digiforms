@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Terms & Conditions{% endblock %}
+
+{% block header_left %}
+<p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Legal</p>
+<h1 class="text-2xl md:text-3xl font-black">Terms & Conditions</h1>
+<p class="text-sm text-slate-600 mt-1">DigiForm ke upyog ke liye basic rules aur service conditions.</p>
+{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+  <div>
+    <h2 class="text-lg font-black">1. Service Charge</h2>
+    <p class="mt-2 text-sm text-slate-700">DigiForm ka upyog karne ke liye ₹100 ka service charge liya jayega. Ye fees sirf form filling, data handling, support, aur automation service ke liye hai. College ya exam authority ki official fees isme shamil nahi hai.</p>
+  </div>
+  <div>
+    <h2 class="text-lg font-black">2. Data Accuracy</h2>
+    <p class="mt-2 text-sm text-slate-700">User jo bhi data, documents, marks, category, college preference, ya identity details deta hai, uski sahi hone ki zimmedari user ki hogi. Galat ya adhuri jankari ki wajah se form reject hone par DigiForm zimmedar nahi hoga.</p>
+  </div>
+  <div>
+    <h2 class="text-lg font-black">3. Special Codes / Tokens</h2>
+    <p class="mt-2 text-sm text-slate-700">Admin dwara diya gaya discount ya free token sirf limited samay, aam taur par 2 se 5 minute, ke liye valid hoga. Expire hone ke baad normal ₹100 service charge lagu hoga.</p>
+  </div>
+  <div>
+    <h2 class="text-lg font-black">4. Final Review</h2>
+    <p class="mt-2 text-sm text-slate-700">Portal fast fill aur auto-fill suvidha deta hai, lekin final submission se pehle user ko apna data khud verify karna zaroori hai.</p>
+  </div>
+</section>
+{% endblock %}
