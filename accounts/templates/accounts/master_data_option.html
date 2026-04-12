@@ -12,7 +12,14 @@
 {% endblock %}
 
 {% block header_right %}
-<a href="{% url 'account_profile_card' %}" class="chip hover:bg-slate-200">{{ request.user.username }}</a>
+<a href="{% url 'account_profile_card' %}" class="profile-chip">
+    {% if profile.photo %}
+    <img src="{{ profile.photo.url }}" alt="{{ profile.full_name|default:request.user.username }}" class="profile-chip-avatar">
+    {% else %}
+    <span class="profile-chip-fallback">{{ request.user.username|first|upper }}</span>
+    {% endif %}
+    <span class="profile-chip-name">{{ profile.full_name|default:request.user.username }}</span>
+</a>
 <a href="{% url 'wallet' %}" title="Wallet" class="rounded-lg px-3 py-2 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 inline-flex items-center">
     <span class="material-symbols-outlined" style="font-size:18px;">account_balance_wallet</span>
 </a>
@@ -20,6 +27,13 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  .profile-chip { display:inline-flex; align-items:center; gap:10px; padding:6px 10px; border-radius:999px; background:#fff; color:#0f172a; border:1px solid #dbe3ef; text-decoration:none; box-shadow:0 6px 14px rgba(15,23,42,.06); }
+  .profile-chip:hover { background:#f8fafc; }
+  .profile-chip-avatar { width:34px; height:34px; border-radius:999px; object-fit:cover; border:1px solid #dbe3ef; background:#dbeafe; display:block; }
+  .profile-chip-fallback { width:34px; height:34px; border-radius:999px; display:grid; place-items:center; font-weight:900; color:#1d4ed8; background:#dbeafe; border:1px solid #bfdbfe; }
+  .profile-chip-name { font-size:13px; font-weight:900; color:#0f172a; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
 <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     <form method="post" class="panel rounded-2xl border border-slate-200 shadow-sm p-6">
         {% csrf_token %}

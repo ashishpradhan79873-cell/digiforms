@@ -512,6 +512,7 @@ def master_data_option_view(request):
         request,
         "accounts/master_data_option.html",
         {
+            "profile": profile,
             "has_profile": bool(profile.full_name),
             "news_items": _news_for_master_page(),
         },
@@ -1156,8 +1157,6 @@ def master_data_documents_view(request):
         signature = request.FILES.get("signature")
         photo_copy = None
         signature_copy = None
-        # Passport photo/signature profile core fields hain:
-        # inhe hard-block na karein, warna user ko lagta hai save nahi hua.
         if photo:
             try:
                 photo_bytes = photo.read()
@@ -1168,7 +1167,7 @@ def master_data_documents_view(request):
                 photo_copy = None
             err = _validate_file_rule("Passport Size Photo", photo, rule_map)
             if err:
-                messages.warning(request, f"Photo rule warning: {err} (photo save continue hoga)")
+                errors.append(err)
         if signature:
             try:
                 signature_bytes = signature.read()
@@ -1179,7 +1178,7 @@ def master_data_documents_view(request):
                 signature_copy = None
             err = _validate_file_rule("Signature", signature, rule_map)
             if err:
-                messages.warning(request, f"Signature rule warning: {err} (signature save continue hoga)")
+                errors.append(err)
         for spec in document_specs:
             field_name = spec["field_name"]
             title = spec["title"]
