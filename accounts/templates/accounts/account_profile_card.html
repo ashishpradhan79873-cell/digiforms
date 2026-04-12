@@ -19,6 +19,7 @@
   .panel-card { background:#fff; border:1px solid #dbe3ef; border-radius:18px; }
   .policy-card { display:block; border:1px solid #dbe3ef; border-radius:16px; padding:18px; background:#fff; text-decoration:none; color:inherit; box-shadow:0 10px 20px rgba(15,23,42,.05); }
   .policy-card:hover { border-color:#93c5fd; box-shadow:0 16px 28px rgba(37,99,235,.10); }
+  .app-action-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:14px; padding:12px 16px; font-size:14px; font-weight:900; }
 </style>
 
 {% if messages %}
@@ -79,4 +80,86 @@
     <p class="mt-2 text-sm text-slate-600">Double payment, failed transaction, aur no-refund rules yahan clearly diye gaye hain.</p>
   </a>
 </section>
+
+<section class="panel-card p-6 mt-5">
+  <div class="flex items-start justify-between gap-4 flex-col md:flex-row">
+    <div>
+      <div class="text-xs font-black uppercase tracking-[0.18em] text-violet-700">App Access</div>
+      <h2 class="mt-2 text-2xl font-black">Download & Share DigiForm</h2>
+      <p class="mt-2 text-sm text-slate-600">App install ho to direct mobile home screen par aa jayega. Share option se aap app link kisi ko bhi bhej sakte ho.</p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button type="button" id="installAppBtn" class="app-action-btn bg-blue-700 text-white hover:bg-blue-800">
+        <span class="material-symbols-outlined" style="font-size:18px;">download</span>
+        Download App
+      </button>
+      <button type="button" id="shareAppBtn" class="app-action-btn bg-emerald-700 text-white hover:bg-emerald-800">
+        <span class="material-symbols-outlined" style="font-size:18px;">share</span>
+        Share App
+      </button>
+    </div>
+  </div>
+  <div id="appActionNote" class="mt-4 hidden rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700"></div>
+</section>
+
+<script>
+  (function () {
+    let installPromptEvent = null;
+    const installBtn = document.getElementById("installAppBtn");
+    const shareBtn = document.getElementById("shareAppBtn");
+    const noteBox = document.getElementById("appActionNote");
+    const appUrl = window.location.origin + "{% url 'home' %}";
+
+    function showNote(text, isError) {
+      if (!noteBox) return;
+      noteBox.textContent = text;
+      noteBox.classList.remove("hidden", "border-blue-200", "bg-blue-50", "text-blue-700", "border-rose-200", "bg-rose-50", "text-rose-700");
+      if (isError) {
+        noteBox.classList.add("border-rose-200", "bg-rose-50", "text-rose-700");
+      } else {
+        noteBox.classList.add("border-blue-200", "bg-blue-50", "text-blue-700");
+      }
+    }
+
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      installPromptEvent = e;
+    });
+
+    if (installBtn) {
+      installBtn.addEventListener("click", async function () {
+        if (installPromptEvent) {
+          installPromptEvent.prompt();
+          return;
+        }
+        showNote("Agar install prompt abhi nahi aa raha hai, to browser menu se 'Install App' ya 'Add to Home Screen' use karo.", false);
+      });
+    }
+
+    if (shareBtn) {
+      shareBtn.addEventListener("click", async function () {
+        const shareData = {
+          title: "DigiForm",
+          text: "DigiForm app use karo.",
+          url: appUrl
+        };
+        try {
+          if (navigator.share) {
+            await navigator.share(shareData);
+            showNote("App link share ho gaya.", false);
+            return;
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(appUrl);
+            showNote("App link copy ho gaya. Ab jahan chahe paste karke share karo.", false);
+            return;
+          }
+          showNote("Share support available nahi hai. Link manually copy karo: " + appUrl, true);
+        } catch (err) {
+          showNote("Share cancel ya fail ho gaya.", true);
+        }
+      });
+    }
+  })();
+</script>
 {% endblock %}
