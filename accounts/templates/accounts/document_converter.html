@@ -417,6 +417,12 @@
       const h = Math.max(Math.round(cropRect.h * scaleY), 1);
       return { left, top, right, bottom, w, h };
     }
+    function syncSizeInputsFromCrop() {
+      const s = cropStats();
+      widthInput.value = String(Math.max(s.w, 1));
+      heightInput.value = String(Math.max(s.h, 1));
+      return s;
+    }
     function draw() {
       const canvasW = cropCanvas.clientWidth || 430;
       const canvasH = canvasCssHeight || 260;
@@ -470,7 +476,8 @@
       ];
       ctx.fillStyle = "#16a34a";
       points.forEach(([px, py]) => ctx.fillRect(px - handle / 2, py - handle / 2, handle, handle));
-      infoText.textContent = "Crop: " + cropStats().w + "x" + cropStats().h + " px";
+      const s = cropStats();
+      infoText.textContent = "Crop: " + s.w + "x" + s.h + " px";
     }
     function pointerPos(evt) {
       const rect = cropCanvas.getBoundingClientRect();
@@ -534,7 +541,10 @@
       draw();
       evt.preventDefault();
     }
-    function onPointerUp() { dragMode = ""; }
+    function onPointerUp() {
+      if (dragMode && img) syncSizeInputsFromCrop();
+      dragMode = "";
+    }
     function previewResult(item) {
       resultWrap.innerHTML = `
         <div class="result">
@@ -563,6 +573,7 @@
         draw();
         resetCropRect();
         draw();
+        syncSizeInputsFromCrop();
       };
       image.src = objectUrl;
       const autoKb = Math.max(Math.floor(selectedFile.size / 1024) - 1, 5);
@@ -574,6 +585,7 @@
       const b = imageBounds();
       cropRect = { x: b.x, y: b.y, w: b.w, h: b.h };
       draw();
+      syncSizeInputsFromCrop();
     });
 
     if (rotateBtn) {
@@ -581,6 +593,7 @@
         rotateDeg = (rotateDeg + 90) % 360;
         resetCropRect();
         draw();
+        syncSizeInputsFromCrop();
       });
     }
 
