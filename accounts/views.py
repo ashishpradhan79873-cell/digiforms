@@ -651,6 +651,86 @@ def _resize_no_stretch(image, req_w, req_h):
     return image.resize((out_w, out_h), Image.Resampling.LANCZOS)
 
 
+def _resize_by_scale(image, scale):
+    w, h = image.size
+    next_w = max(int(round(w * scale)), 1)
+    next_h = max(int(round(h * scale)), 1)
+    if (next_w, next_h) == (w, h):
+        return image
+    return image.resize((next_w, next_h), Image.Resampling.LANCZOS)
+
+
+def _pad_encoded_bytes(data, target_bytes):
+    if not data or len(data) >= target_bytes:
+        return data
+    return data + (b"\0" * (target_bytes - len(data)))
+
+
+def _best_lossey_encode(image, mime_type, target_bytes, quality_floor, quality_ceiling=100):
+    best_bytes = b""
+    best_diff = None
+    best_quality = quality_ceiling
+    lo = quality_floor
+    hi = quality_ceiling
+    while lo <= hi:
+        q = (lo + hi) // 2
+        encoded = _encode_with_pillow(image, mime_type, q)
+        diff = abs(len(encoded) - target_bytes)
+        if best_diff is None or diff < best_diff:
+            best_bytes = encoded
+            best_diff = diff
+            best_quality = q
+        if len(encoded) > target_bytes:
+            hi = q - 1
+        else:
+            lo = q + 1
+
+    for q in range(max(quality_floor, best_quality - 4), min(quality_ceiling, best_quality + 4) + 1):
+        encoded = _encode_with_pillow(image, mime_type, q)
+        diff = abs(len(encoded) - target_bytes)
+        if best_diff is None or diff < best_diff:
+            best_bytes = encoded
+            best_diff = diff
+    return best_bytes
+
+
+def _fit_image_to_target_bytes(image, mime_type, target_bytes, quality_lock=False, strict_kb=True):
+    work_image = image
+    best_bytes = b""
+    best_image = work_image
+    best_diff = None
+
+    scales_down = [1.0, 0.99, 0.985, 0.98, 0.97, 0.96, 0.95, 0.94, 0.92, 0.90, 0.88, 0.86]
+    scales_up = [1.0, 1.01, 1.02, 1.03, 1.05, 1.07, 1.10]
+    quality_floor = 92 if quality_lock else 55
+
+    scale_plan = scales_down if mime_type == "image/png" else scales_down + scales_up[1:]
+    visited = set()
+    for scale in scale_plan:
+        candidate_image = _resize_by_scale(image, scale) if scale != 1.0 else image
+        size_key = candidate_image.size
+        if size_key in visited:
+            continue
+        visited.add(size_key)
+
+        if mime_type == "image/png":
+            encoded = _encode_with_pillow(candidate_image, mime_type, 100)
+        else:
+            encoded = _best_lossey_encode(candidate_image, mime_type, target_bytes, quality_floor)
+
+        diff = abs(len(encoded) - target_bytes)
+        if best_diff is None or diff < best_diff:
+            best_bytes = encoded
+            best_image = candidate_image
+            best_diff = diff
+        if diff <= 64:
+            break
+
+    if strict_kb and best_bytes and len(best_bytes) < target_bytes:
+        best_bytes = _pad_encoded_bytes(best_bytes, target_bytes)
+    return best_bytes, best_image
+
+
 def _clamp_crop_box(img_w, img_h, x, y, w, h):
     x = max(0, min(x, img_w - 1))
     y = max(0, min(y, img_h - 1))
@@ -690,7 +770,7 @@ def document_converter_process_view(request):
         target_kb = max(int(request.POST.get("target_kb", "200")), 10)
     except ValueError:
         target_kb = 200
-    target_bytes = max((target_kb - 1) * 1024, 1024)
+    target_bytes = max(target_kb * 1024, 1024)
     out_type = request.POST.get("out_type", "keep")
     quality_lock = request.POST.get("quality_lock", "1") == "1"
     strict_kb = request.POST.get("strict_kb", "1") == "1"
@@ -765,58 +845,13 @@ def document_converter_process_view(request):
 
     image = _resize_no_stretch(image, req_w, req_h)
 
-    best_bytes = b""
-    best_size = None
-    work_image = image
-
-    if quality_lock:
-        # Keep visual quality high and avoid aggressive re-compression/downscale.
-        if mime_type == "image/png":
-            best_bytes = _encode_with_pillow(work_image, mime_type, 100)
-            best_size = len(best_bytes)
-        else:
-            for q in (98, 96, 94):
-                encoded = _encode_with_pillow(work_image, mime_type, q)
-                if best_size is None or len(encoded) < best_size:
-                    best_bytes = encoded
-                    best_size = len(encoded)
-                if len(encoded) <= target_bytes:
-                    best_bytes = encoded
-                    best_size = len(encoded)
-                    break
-    else:
-        min_quality = 62
-        for _ in range(10):
-            local_best = None
-            if mime_type == "image/png":
-                png_bytes = _encode_with_pillow(work_image, mime_type, 100)
-                local_best = png_bytes
-            else:
-                for q in range(96, min_quality - 1, -2):
-                    encoded = _encode_with_pillow(work_image, mime_type, q)
-                    if local_best is None or len(encoded) < len(local_best):
-                        local_best = encoded
-                    if len(encoded) <= target_bytes:
-                        local_best = encoded
-                        break
-
-            current_size = len(local_best or b"")
-            if best_size is None or (current_size and current_size < best_size):
-                best_size = current_size
-                best_bytes = local_best or b""
-            if current_size and current_size <= target_bytes:
-                best_bytes = local_best or b""
-                best_size = current_size
-                break
-            if not strict_kb and best_bytes:
-                break
-
-            w, h = work_image.size
-            next_w = max(int(w * 0.95), 120)
-            next_h = max(int(h * 0.95), 120)
-            if (next_w, next_h) == (w, h):
-                break
-            work_image = work_image.resize((next_w, next_h), Image.Resampling.LANCZOS)
+    best_bytes, work_image = _fit_image_to_target_bytes(
+        image,
+        mime_type,
+        target_bytes,
+        quality_lock=quality_lock,
+        strict_kb=strict_kb,
+    )
 
     if not best_bytes:
         return JsonResponse({"error": "Unable to convert image."}, status=500)

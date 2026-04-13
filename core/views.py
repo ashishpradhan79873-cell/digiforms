@@ -16,7 +16,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
-from django.contrib.staticfiles import finders
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -39,46 +38,6 @@ from accounts.models import (
 from PIL import Image
 
 logger = logging.getLogger(__name__)
-
-
-def manifest_json(request):
-    manifest = {
-        "name": "DigiForm",
-        "short_name": "DigiForm",
-        "start_url": "/",
-        "scope": "/",
-        "display": "standalone",
-        "background_color": "#ffffff",
-        "theme_color": "#0d6efd",
-        "icons": [
-            {
-                "src": "/static/icons/icon-192.png?v=digiform-2",
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any maskable",
-            },
-            {
-                "src": "/static/icons/icon-512.png?v=digiform-2",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable",
-            },
-        ],
-    }
-    return JsonResponse(manifest, content_type="application/manifest+json")
-
-
-def service_worker(request):
-    sw_path = finders.find("sw.js")
-    if not sw_path:
-        return HttpResponse("// Service worker not found", content_type="application/javascript", status=404)
-    with open(sw_path, "r", encoding="utf-8") as sw_file:
-        response = HttpResponse(sw_file.read(), content_type="application/javascript")
-    response["Service-Worker-Allowed"] = "/"
-    response["Cache-Control"] = "no-cache"
-    return response
-
-
 DEFAULT_CATALOG = [
     {
         "category": Vacancy.CATEGORY_GOVERNMENT,

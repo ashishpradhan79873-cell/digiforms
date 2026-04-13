@@ -648,7 +648,7 @@
         downloadBtn.download = outName;
         downloadBtn.style.display = "inline-flex";
         previewResult({ url: downloadUrl, name: outName, originalSize: selectedFile.size, newSize: outSize, width: outW, height: outH });
-        infoText.textContent = "Done. Target approx: " + (targetKb - 1) + " KB";
+        infoText.textContent = "Done. Target exact: " + targetKb + " KB";
       } finally {
         convertBtn.disabled = false;
         setBusy(false);
