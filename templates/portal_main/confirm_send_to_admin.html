@@ -26,12 +26,30 @@
   .select-col { display:flex; justify-content:flex-end; }
   .comment-row { border:1px solid #bfdbfe; background:#eff6ff; color:#1e3a8a; border-radius:12px; padding:10px 12px; font-size:13px; font-weight:700; }
   .field-help { margin-top:4px; font-size:11px; font-weight:700; color:#64748b; }
+  .mobile-pager { display:none; }
+  .apply-page { display:block; }
+  .mobile-pager-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; }
+  .mobile-pager-title { font-size:13px; font-weight:800; color:#0f172a; }
+  .mobile-pager-count { font-size:11px; font-weight:800; color:#64748b; }
+  .mobile-pager-actions { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .mobile-nav-btn { border:1px solid #cbd5e1; background:#fff; color:#0f172a; border-radius:999px; padding:8px 12px; font-size:12px; font-weight:800; }
+  .mobile-nav-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .mobile-dot-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .mobile-dot { width:32px; height:32px; border-radius:999px; border:1px solid #cbd5e1; background:#fff; color:#334155; font-size:12px; font-weight:900; }
+  .mobile-dot.active { background:#0d6efd; border-color:#0d6efd; color:#fff; box-shadow:0 8px 18px rgba(13,110,253,.18); }
+  .upload-state { margin-top:6px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .upload-pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:4px 10px; font-size:11px; font-weight:900; }
+  .replace-toggle { border:none; background:transparent; color:#1d4ed8; font-size:11px; font-weight:800; cursor:pointer; padding:0; }
+  .replace-wrap.hidden { display:none; }
   @media (max-width: 640px) {
     .card { border-radius:10px; }
     .step-box { padding:10px; }
     .row-line { grid-template-columns:1fr; gap:6px; }
     .row-label { font-size:12px; }
     .row-value input { font-size:13px; }
+    .mobile-pager { display:block; }
+    .apply-page { display:none; }
+    .apply-page.is-active { display:block; }
   }
 </style>
 
@@ -58,10 +76,22 @@
       <span class="case-btn-text">aA</span>
     </button>
   </div>
+  <div id="mobileApplyPager" class="mobile-pager">
+    <div class="mobile-pager-head">
+      <div id="mobilePageTitle" class="mobile-pager-title">Step</div>
+      <div id="mobilePageCount" class="mobile-pager-count">1 / 1</div>
+    </div>
+    <div class="mobile-pager-actions">
+      <button type="button" id="mobilePrevPageBtn" class="mobile-nav-btn">Previous</button>
+      <button type="button" id="mobileNextPageBtn" class="mobile-nav-btn">Next</button>
+    </div>
+    <div id="mobilePageDots" class="mobile-dot-list"></div>
+  </div>
 
   <div class="mt-4 space-y-3">
     {% for step in step_cards %}
     {% if step.rows %}
+    <section class="apply-page" data-page-title="{{ step.label }}">
     <div class="step-box">
       <div class="step-head">
         <div class="font-bold">{{ step.label }}</div>
@@ -95,11 +125,13 @@
         {% endfor %}
       </div>
     </div>
+    </section>
     {% endif %}
     {% endfor %}
   </div>
 
   {% if required_doc_rows %}
+  <section class="apply-page" data-page-title="Required Documents">
   <h2 class="text-xl font-black mt-6">Required Documents</h2>
   <p class="text-sm text-slate-600 mt-1">Vacancy ke liye jo documents/data chahiye woh yahan hai. Existing files auto-filled hain.</p>
   <div class="mt-3 step-box">
@@ -121,7 +153,23 @@
           class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
           data-editable-text="1"
         >
+        {% if row.exists %}
+        <div class="upload-state">
+          <span class="upload-pill">Uploaded</span>
+          <a href="{{ row.value }}" target="_blank" rel="noopener" class="text-[11px] font-bold text-blue-700 hover:underline">Open file</a>
+          {% if row.file_name %}<span class="text-[11px] text-slate-500">{{ row.file_name }}</span>{% endif %}
+          {% if row.kind != 'Data' %}<button type="button" class="replace-toggle" data-toggle-replace>Replace file</button>{% endif %}
+        </div>
         {% if row.kind != 'Data' %}
+        <div class="replace-wrap hidden">
+          <input
+            type="file"
+            name="{{ row.file_input_name }}"
+            class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+          >
+        </div>
+        {% endif %}
+        {% elif row.kind != 'Data' %}
         <input
           type="file"
           name="{{ row.file_input_name }}"
@@ -133,8 +181,10 @@
     </div>
     {% endfor %}
   </div>
+  </section>
   {% endif %}
 
+  <section class="apply-page" data-page-title="Review & Submit">
   <div id="paymentPanel" class="mt-6 pay-box hidden-panel">
     <h2 class="text-xl font-black">Payment</h2>
     {% if payment_setting or cashfree_enabled %}
@@ -212,6 +262,7 @@
       <span class="material-symbols-outlined" style="font-size:16px;">payments</span> Pay
     </button>
   </div>
+  </section>
 </form>
 {% if cashfree_enabled %}
 <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
@@ -225,6 +276,85 @@
     const selectAllBox = document.getElementById("selectAllEditableFields");
     const editableInputs = Array.from(document.querySelectorAll("input[data-editable-text='1']"));
     const selectBoxes = Array.from(document.querySelectorAll(".editable-select-box"));
+    const mobilePages = Array.from(document.querySelectorAll(".apply-page"));
+    const mobilePager = document.getElementById("mobileApplyPager");
+    const mobilePageTitle = document.getElementById("mobilePageTitle");
+    const mobilePageCount = document.getElementById("mobilePageCount");
+    const mobilePageDots = document.getElementById("mobilePageDots");
+    const mobilePrevPageBtn = document.getElementById("mobilePrevPageBtn");
+    const mobileNextPageBtn = document.getElementById("mobileNextPageBtn");
+    const mobilePageChunkSize = Math.max(parseInt("{{ mobile_page_size|default:6 }}", 10) || 6, 1);
+    let activeMobilePage = 0;
+    let mobilePageModels = [];
+
+    function mobileModeEnabled() {
+      return window.innerWidth <= 640;
+    }
+
+    function buildMobilePageModels() {
+      mobilePageModels = [];
+      mobilePages.forEach((page) => {
+        const rows = Array.from(page.querySelectorAll(".row-line"));
+        const pageTitle = page.getAttribute("data-page-title") || "Step";
+        if (!rows.length) {
+          mobilePageModels.push({ title: pageTitle, page, rows: [] });
+          return;
+        }
+        for (let start = 0; start < rows.length; start += mobilePageChunkSize) {
+          const chunk = rows.slice(start, start + mobilePageChunkSize);
+          const suffix = rows.length > mobilePageChunkSize ? " (" + (Math.floor(start / mobilePageChunkSize) + 1) + ")" : "";
+          mobilePageModels.push({ title: pageTitle + suffix, page, rows: chunk });
+        }
+      });
+      if (!mobilePageModels.length) {
+        mobilePageModels = mobilePages.map((page) => ({ title: page.getAttribute("data-page-title") || "Step", page, rows: [] }));
+      }
+    }
+
+    function renderMobilePager() {
+      if (!mobilePager || !mobilePages.length) return;
+      if (!mobileModeEnabled()) {
+        mobilePages.forEach((page) => page.classList.add("is-active"));
+        mobilePages.forEach((page) => {
+          page.querySelectorAll(".row-line").forEach((row) => { row.style.display = ""; });
+        });
+        mobilePager.style.display = "none";
+        return;
+      }
+      if (!mobilePageModels.length) buildMobilePageModels();
+      mobilePager.style.display = "block";
+      activeMobilePage = Math.max(0, Math.min(activeMobilePage, mobilePageModels.length - 1));
+      const currentModel = mobilePageModels[activeMobilePage];
+      mobilePages.forEach((page) => {
+        const isCurrentPage = page === currentModel.page;
+        page.classList.toggle("is-active", isCurrentPage);
+        const currentRows = currentModel.rows || [];
+        const hasChunks = page.querySelectorAll(".row-line").length > 0;
+        page.querySelectorAll(".row-line").forEach((row) => {
+          row.style.display = (!isCurrentPage || !hasChunks || currentRows.includes(row)) ? "" : "none";
+        });
+      });
+      if (mobilePageTitle) {
+        mobilePageTitle.textContent = currentModel?.title || "Step";
+      }
+      if (mobilePageCount) {
+        mobilePageCount.textContent = (activeMobilePage + 1) + " / " + mobilePageModels.length;
+      }
+      if (mobilePrevPageBtn) mobilePrevPageBtn.disabled = activeMobilePage === 0;
+      if (mobileNextPageBtn) mobileNextPageBtn.disabled = activeMobilePage === mobilePageModels.length - 1;
+      if (mobilePageDots) {
+        mobilePageDots.innerHTML = mobilePageModels.map((_, index) => (
+          '<button type="button" class="mobile-dot' + (index === activeMobilePage ? ' active' : '') + '" data-mobile-page-index="' + index + '">' + (index + 1) + '</button>'
+        )).join("");
+        mobilePageDots.querySelectorAll("[data-mobile-page-index]").forEach((btn) => {
+          btn.addEventListener("click", function () {
+            activeMobilePage = Number(btn.getAttribute("data-mobile-page-index")) || 0;
+            renderMobilePager();
+            mobilePager.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
+      }
+    }
 
     function ensureConsents() {
       const ok = !!(consentData && consentData.checked && consentUser && consentUser.checked);
@@ -279,6 +409,38 @@
       });
     });
     syncTopSelectState();
+
+    if (mobilePrevPageBtn) {
+      mobilePrevPageBtn.addEventListener("click", function () {
+        if (activeMobilePage > 0) {
+          activeMobilePage -= 1;
+          renderMobilePager();
+          mobilePager.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    }
+    if (mobileNextPageBtn) {
+      mobileNextPageBtn.addEventListener("click", function () {
+        if (activeMobilePage < mobilePages.length - 1) {
+          activeMobilePage += 1;
+          renderMobilePager();
+          mobilePager.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    }
+    document.querySelectorAll("[data-toggle-replace]").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const wrap = btn.closest(".row-value")?.querySelector(".replace-wrap");
+        if (!wrap) return;
+        wrap.classList.toggle("hidden");
+      });
+    });
+    window.addEventListener("resize", function () {
+      buildMobilePageModels();
+      renderMobilePager();
+    });
+    buildMobilePageModels();
+    renderMobilePager();
 
     if (selectedUppercaseBtn) {
       selectedUppercaseBtn.addEventListener("click", function () {

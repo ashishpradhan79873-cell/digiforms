@@ -13,8 +13,8 @@
 
 {% block header_right %}
 <a href="{% url 'account_profile_card' %}" class="profile-chip">
-    {% if profile.photo %}
-    <img src="{{ profile.photo.url }}" alt="{{ profile.full_name|default:request.user.username }}" class="profile-chip-avatar">
+    {% if profile.avatar %}
+    <img src="{{ profile.avatar.url }}" alt="{{ profile.full_name|default:request.user.username }}" class="profile-chip-avatar">
     {% else %}
     <span class="profile-chip-fallback">{{ request.user.username|first|upper }}</span>
     {% endif %}

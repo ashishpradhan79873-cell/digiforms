@@ -103,7 +103,7 @@ IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 DEFAULT_REQUIRED_DOCS = []
 APPLY_PENDING_TIMEOUT_MINUTES = 30
 AUTOFILL_LOCK_HOURS = 24
-APPLY_PROFILE_DAILY_VIEW_LIMIT = 5
+APPLY_PROFILE_DAILY_VIEW_LIMIT = 10
 APPLY_PROFILE_UNMASK_WINDOW_MINUTES = 10
 APPLY_PROFILE_UNMASK_DAILY_LIMIT = 2
 
@@ -1434,6 +1434,7 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
                 "label": clean_name,
                 "kind": doc_kind,
                 "value": value,
+                "file_name": (value.rsplit("/", 1)[-1] if value else ""),
                 "input_name": f"vacdoc__{idx}",
                 "checkbox_name": f"vacdoc_select__{idx}",
                 "file_input_name": f"vacdoc_file__{idx}",
@@ -1442,6 +1443,44 @@ def _build_required_doc_rows(profile, required_docs, step_data=None, required_pr
             }
         )
     return rows
+
+
+def _build_mobile_apply_pages(step_cards, required_doc_rows, page_size):
+    safe_size = max(int(page_size or 6), 1)
+    pages = []
+    for step in step_cards:
+        rows = list(step.get("rows") or [])
+        if not rows:
+            continue
+        for start in range(0, len(rows), safe_size):
+            chunk = rows[start:start + safe_size]
+            suffix = ""
+            if len(rows) > safe_size:
+                suffix = f" ({start // safe_size + 1})"
+            pages.append(
+                {
+                    "title": f"{step.get('label', 'Step')}{suffix}",
+                    "kind": "step",
+                    "rows": chunk,
+                    "step_key": step.get("key", ""),
+                }
+            )
+    doc_rows = list(required_doc_rows or [])
+    for start in range(0, len(doc_rows), safe_size):
+        chunk = doc_rows[start:start + safe_size]
+        suffix = ""
+        if len(doc_rows) > safe_size:
+            suffix = f" ({start // safe_size + 1})"
+        pages.append(
+            {
+                "title": f"Required Documents{suffix}",
+                "kind": "documents",
+                "rows": chunk,
+                "step_key": "documents",
+            }
+        )
+    pages.append({"title": "Review & Submit", "kind": "review", "rows": [], "step_key": "review"})
+    return pages
 
 
 def _demo_document_links(application):
@@ -1965,6 +2004,8 @@ def confirm_send_to_admin(request):
         )
         if row_items:
             selected_default.append(key)
+    mobile_page_size = max(int(getattr(vacancy, "mobile_page_size", 6) or 6), 1)
+    mobile_pages = _build_mobile_apply_pages(step_cards, required_doc_rows, mobile_page_size)
     return render(
         request,
         "portal_main/confirm_send_to_admin.html",
@@ -1980,6 +2021,8 @@ def confirm_send_to_admin(request):
             "payment_upi_link": payment_upi_link,
             "cashfree_enabled": _cashfree_enabled(),
             "cashfree_mode": getattr(settings, "CASHFREE_MODE", "sandbox"),
+            "mobile_page_size": mobile_page_size,
+            "mobile_pages": mobile_pages,
             "use_requested_only": use_requested_only,
             # kept for backward compat if templates reference these keys in future
             "autofill_lock_active": False,
@@ -2132,7 +2175,7 @@ def apply_profile_preview(request):
 
     allowed_view, remaining_views = _register_apply_profile_view(profile)
     if not allowed_view:
-        messages.error(request, "Aaj ka apply profile view limit (5) complete ho gaya.")
+        messages.error(request, "Aaj ka apply profile view limit (10) complete ho gaya.")
         return redirect("confirm_send_to_admin")
 
     all_step_data = _profile_step_data(profile)
@@ -3020,6 +3063,7 @@ def admin_save_vacancy(request):
     is_active = request.POST.get("is_active") == "on"
     hidden_from_users = request.POST.get("hidden_from_users") == "on"
     visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
+    mobile_page_size_raw = request.POST.get("mobile_page_size", "6").strip() or "6"
     editor_docs = _collect_doc_editor_inputs(request)
     editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
@@ -3047,6 +3091,10 @@ def admin_save_vacancy(request):
         order_val = max(int(display_order), 0)
     except ValueError:
         order_val = 0
+    try:
+        mobile_page_size = max(int(mobile_page_size_raw), 1)
+    except ValueError:
+        mobile_page_size = 6
 
     vacancy = Vacancy(
         category=category,
@@ -3060,6 +3108,7 @@ def admin_save_vacancy(request):
         visible_to_users=visible_to_users,
         required_documents=required_documents,
         required_profile_fields=required_profile_fields,
+        mobile_page_size=mobile_page_size,
     )
     if request.FILES.get("image"):
         vacancy.image = request.FILES["image"]
@@ -3115,6 +3164,7 @@ def admin_update_vacancy(request, vacancy_id):
     is_active = vacancy.is_active if "is_active" not in request.POST else request.POST.get("is_active") == "on"
     hidden_from_users = vacancy.hidden_from_users if "hidden_from_users" not in request.POST else request.POST.get("hidden_from_users") == "on"
     visible_to_users = _collect_multi_values(request, "visible_to_users", "visible_to_users_item[]")
+    mobile_page_size_raw = request.POST.get("mobile_page_size", str(getattr(vacancy, "mobile_page_size", 6))).strip() or "6"
     editor_docs = _collect_doc_editor_inputs(request)
     editor_fields = _collect_field_editor_inputs(request)
     required_documents = _collect_multi_values(request, "required_documents", "required_documents_item[]")
@@ -3139,6 +3189,10 @@ def admin_update_vacancy(request, vacancy_id):
         order_val = max(int(display_order), 0)
     except ValueError:
         order_val = 0
+    try:
+        mobile_page_size = max(int(mobile_page_size_raw), 1)
+    except ValueError:
+        mobile_page_size = max(int(getattr(vacancy, "mobile_page_size", 6) or 6), 1)
 
     vacancy.title = title
     vacancy.organization = organization
@@ -3150,6 +3204,7 @@ def admin_update_vacancy(request, vacancy_id):
     vacancy.visible_to_users = visible_to_users
     vacancy.required_documents = required_documents
     vacancy.required_profile_fields = required_profile_fields
+    vacancy.mobile_page_size = mobile_page_size
     if request.FILES.get("image"):
         vacancy.image = request.FILES["image"]
     if request.POST.get("clear_image") == "on":

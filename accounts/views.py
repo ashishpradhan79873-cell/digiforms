@@ -561,13 +561,13 @@ def account_profile_card_view(request):
         photo = request.FILES.get("profile_photo")
         clear_photo = request.POST.get("clear_profile_photo") == "1"
         if photo:
-            profile.photo = photo
-            profile.save(update_fields=["photo"])
+            profile.avatar = photo
+            profile.save(update_fields=["avatar"])
             messages.success(request, "Profile photo update ho gayi.")
             return redirect("account_profile_card")
         if clear_photo:
-            profile.photo = None
-            profile.save(update_fields=["photo"])
+            profile.avatar = None
+            profile.save(update_fields=["avatar"])
             messages.success(request, "Profile photo remove ho gayi.")
             return redirect("account_profile_card")
         messages.warning(request, "Photo choose karo ya remove option select karo.")
@@ -1190,27 +1190,11 @@ def master_data_documents_view(request):
         errors = []
         photo = request.FILES.get("passport_photo")
         signature = request.FILES.get("signature")
-        photo_copy = None
-        signature_copy = None
         if photo:
-            try:
-                photo_bytes = photo.read()
-                photo.seek(0)
-                if photo_bytes:
-                    photo_copy = ContentFile(photo_bytes, name=getattr(photo, "name", "passport_photo"))
-            except Exception:
-                photo_copy = None
             err = _validate_file_rule("Passport Size Photo", photo, rule_map)
             if err:
                 errors.append(err)
         if signature:
-            try:
-                signature_bytes = signature.read()
-                signature.seek(0)
-                if signature_bytes:
-                    signature_copy = ContentFile(signature_bytes, name=getattr(signature, "name", "signature"))
-            except Exception:
-                signature_copy = None
             err = _validate_file_rule("Signature", signature, rule_map)
             if err:
                 errors.append(err)
@@ -1250,26 +1234,6 @@ def master_data_documents_view(request):
         elif clear_signature:
             profile.signature = None
         profile.save()
-        # Keep mirrored photo/signature entries in UserDocument so preview areas
-        # that read documents also always show latest uploaded image.
-        if photo_copy:
-            photo_doc = profile.documents.filter(title__iexact="Passport Photo").first()
-            if photo_doc:
-                photo_doc.file = photo_copy
-                photo_doc.save()
-            else:
-                UserDocument.objects.create(profile=profile, title="Passport Photo", file=photo_copy)
-        elif clear_photo:
-            profile.documents.filter(title__iexact="Passport Photo").delete()
-        if signature_copy:
-            sign_doc = profile.documents.filter(title__iexact="Signature").first()
-            if sign_doc:
-                sign_doc.file = signature_copy
-                sign_doc.save()
-            else:
-                UserDocument.objects.create(profile=profile, title="Signature", file=signature_copy)
-        elif clear_signature:
-            profile.documents.filter(title__iexact="Signature").delete()
 
         saved_count = 0
         for spec in document_specs:

@@ -77,6 +77,7 @@ class UserProfile(models.Model):
     bank_extra_rows = models.JSONField(default=list, blank=True)
     subject_extra_rows = models.JSONField(default=list, blank=True)
 
+    avatar        = models.ImageField(upload_to='profile_avatars/', null=True, blank=True)
     photo         = models.ImageField(upload_to='profile_photos/', null=True, blank=True)
     signature     = models.ImageField(upload_to='profile_signatures/', null=True, blank=True)
     chat_enabled  = models.BooleanField(default=False)
@@ -134,6 +135,7 @@ class Vacancy(models.Model):
     visible_to_users = models.JSONField(default=list, blank=True)
     required_documents = models.JSONField(default=list, blank=True)
     required_profile_fields = models.JSONField(default=list, blank=True)
+    mobile_page_size = models.PositiveSmallIntegerField(default=6)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
