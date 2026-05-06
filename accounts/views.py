@@ -22,10 +22,8 @@ from PIL import Image, ImageOps
 STEPS = [
     ("personal", "Personal Details", "master_data_personal"),
     ("address", "Address Details", "master_data_address"),
-    ("academic", "Academic Details", "master_data_academic"),
-    ("college", "College Details", "master_data_college"),
+    ("academic", "Educational Details", "master_data_academic"),
     ("bank", "Card Details", "master_data_bank"),
-    ("subject", "Subject Details", "master_data_subject"),
     ("documents", "Document Upload", "master_data_documents"),
 ]
 
@@ -42,9 +40,7 @@ STEP_EXTRA_META = {
     "personal": ("personal_extra_label[]", "personal_extra_value[]", "personal_extra_permanent[]", "personal_extra_rows"),
     "address": ("address_extra_label[]", "address_extra_value[]", "address_extra_permanent[]", "address_extra_rows"),
     "academic": ("academic_extra_label[]", "academic_extra_value[]", "academic_extra_permanent[]", "academic_extra_rows"),
-    "college": ("college_extra_label[]", "college_extra_value[]", "college_extra_permanent[]", "college_extra_rows"),
     "bank": ("bank_extra_label[]", "bank_extra_value[]", "bank_extra_permanent[]", "bank_extra_rows"),
-    "subject": ("subject_extra_label[]", "subject_extra_value[]", "subject_extra_permanent[]", "subject_extra_rows"),
 }
 
 MASK_AFTER_HOURS = 24
@@ -435,7 +431,17 @@ def login_view(request):
             request.session.pop("pending_form_apply", None)
             return redirect("master_data_option")
         messages.error(request, "Username ya Password galat hai!")
-    return render(request, "accounts/login.html")
+    return render(
+        request,
+        "accounts/login.html",
+        {
+            "breadcrumbs": [
+                {"label": "Home", "url": "/"},
+                {"label": "Accounts", "url": "/accounts/login/"},
+                {"label": "Login", "url": "/accounts/login/"},
+            ]
+        },
+    )
 
 
 def register_view(request):

@@ -76,11 +76,6 @@ urlpatterns = [
         name="admin_download_all_documents",
     ),
     path(
-        "admin-panel/options/<str:category>/",
-        views.admin_option_control,
-        name="admin_option_control",
-    ),
-    path(
         "admin-panel/master-data/",
         views.admin_master_data_control,
         name="admin_master_data_control",
@@ -111,6 +106,11 @@ urlpatterns = [
         name="admin_chat_clear_thread",
     ),
     path("admin-panel/options/save/", views.admin_save_vacancy, name="admin_save_vacancy"),
+    path(
+        "admin-panel/options/<str:category>/",
+        views.admin_option_control,
+        name="admin_option_control",
+    ),
     path(
         "admin-panel/options/<int:vacancy_id>/delete/",
         views.admin_delete_vacancy,

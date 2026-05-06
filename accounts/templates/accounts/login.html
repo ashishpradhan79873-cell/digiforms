@@ -1,89 +1,137 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Login - Digi Form{% endblock %}
+{% block title %}Login - DigiForm{% endblock %}
+
 {% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
-{% block page_container_class %}min-h-screen grid place-items-center p-4{% endblock %}
+{% block page_container_class %}min-h-screen flex flex-col items-center justify-center gap-4 p-4{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
 <style>
-  .auth-wrap { width:min(460px,100%); }
-  .brand-icon { width:64px; height:64px; border-radius:14px; background:#2b78da; display:grid; place-items:center; color:#fff; box-shadow:0 10px 22px rgba(43,120,218,.35); margin:0 auto; }
-  .auth-card { margin-top:20px; border:1px solid #d6deea; border-radius:16px; background:#fff; box-shadow:0 8px 24px rgba(15,23,42,.06); padding:28px; }
-  .label { font-size:14px; font-weight:700; color:#334155; }
-  .input-row { position:relative; margin-top:7px; }
-  .input { width:100%; border:1px solid #cfd8e3; background:#f8fafc; color:#0f172a; border-radius:10px; padding:12px 42px 12px 40px; font-size:16px; }
-  .input:focus { outline:none; border-color:#2b78da; box-shadow:0 0 0 3px rgba(43,120,218,.15); background:#fff; }
-  .icon-left { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:18px; }
-  .icon-btn { position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#94a3b8; cursor:pointer; }
-  .login-btn { width:100%; border-radius:10px; background:#2b78da; color:#fff; font-weight:900; padding:13px 14px; font-size:18px; }
-  .login-btn:hover { background:#2267bd; }
+  .auth-wrap { width: 100%; max-width: 30rem; }
+  .brand-icon {
+    width: 74px;
+    height: 74px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    background: #1d4ed8;
+    box-shadow: 0 18px 34px rgba(29, 78, 216, 0.28);
+  }
+  .auth-card { border: 1px solid #e2e8f0; background: rgba(255,255,255,0.96); box-shadow: 0 24px 55px rgba(15,23,42,0.10); }
+  .label { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
+  .input-row { position: relative; }
+  .input {
+    width: 100%;
+    border-radius: 0.95rem;
+    border: 1px solid #cbd5e1;
+    padding: 0.8rem 0.95rem 0.8rem 2.7rem;
+    outline: none;
+    background: #eff6ff;
+    color: #0f172a;
+    transition: 0.15s ease;
+  }
+  .input:focus { border-color: rgba(59,130,246,0.9); box-shadow: 0 0 0 4px rgba(59,130,246,0.12); }
+  .icon-left { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #64748b; }
+  .icon-btn { position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%); padding: 0.45rem; border-radius: 9999px; color: #64748b; }
+  .icon-btn:hover { background: #f1f5f9; color: #0f172a; }
+  .login-btn { background: #0d6efd; }
+  .login-btn:hover { filter: brightness(0.97); }
 </style>
 
-<section class="auth-wrap">
-  <div class="brand-icon">
-    <span class="material-symbols-outlined" style="font-size:32px;">dashboard</span>
+<div class="auth-wrap">
+  <div class="flex flex-col items-center text-center">
+    <div class="brand-icon">
+      <span class="material-symbols-outlined !text-[34px] text-white">grid_view</span>
+    </div>
+    <h1 class="mt-4 text-5xl font-black tracking-tight text-slate-900">Digi Form</h1>
   </div>
-  <h1 class="mt-4 text-center text-5xl font-black text-slate-900">Digi Form</h1>
 
-  <div class="auth-card">
-    <h2 class="text-4xl font-black text-slate-900">Admin Login</h2>
+  <div class="auth-card mt-4 rounded-3xl p-6 sm:p-7">
+    <div class="mb-4">
+      <h2 class="text-3xl font-black text-slate-900">Admin Login</h2>
+    </div>
 
     {% if messages %}
-      {% for message in messages %}
-        <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{{ message }}</div>
-      {% endfor %}
+      <div class="mb-4 space-y-2">
+        {% for message in messages %}
+          <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
     {% endif %}
 
-    <form method="post" class="mt-5 space-y-4">
+    <form method="post" class="space-y-4">
       {% csrf_token %}
-      <label class="block">
-        <span class="label">Username</span>
+
+      <div>
+        <label class="label mb-2 block">Username</label>
         <div class="input-row">
-          <span class="material-symbols-outlined icon-left">person</span>
-          <input type="text" name="username" required class="input" placeholder="Username">
+          <span class="icon-left material-symbols-outlined !text-[20px]">person</span>
+          <input
+            type="text"
+            name="username"
+            autocomplete="username"
+            required
+            value="{{ request.POST.username|default:'' }}"
+            placeholder="Enter username"
+            class="input"
+          >
         </div>
-      </label>
-
-      <div class="flex items-center justify-between">
-        <span class="label">Password</span>
-        <a href="{% url 'forgot_password' %}" class="text-sm font-bold text-blue-600 hover:text-blue-700">Forgot password?</a>
-      </div>
-      <div class="input-row">
-        <span class="material-symbols-outlined icon-left">lock</span>
-        <input id="passwordInput" type="password" name="password" required class="input" placeholder="Password">
-        <button id="togglePassword" class="icon-btn" type="button" aria-label="Show/Hide Password">
-          <span class="material-symbols-outlined" style="font-size:20px;">visibility</span>
-        </button>
       </div>
 
-      <label class="flex items-center gap-2 pt-1">
-        <input type="checkbox" class="h-4 w-4 rounded border-slate-300">
-        <span class="text-sm text-slate-600">Remember this device</span>
-      </label>
+      <div>
+        <label class="label mb-2 block">Password</label>
+        <div class="input-row">
+          <span class="icon-left material-symbols-outlined !text-[20px]">lock</span>
+          <input
+            type="password"
+            name="password"
+            id="loginPassword"
+            autocomplete="current-password"
+            required
+            placeholder="Enter password"
+            class="input pr-12"
+          >
+          <button type="button" id="togglePassword" class="icon-btn" aria-label="Toggle password visibility">
+            <span class="material-symbols-outlined !text-[20px]" id="togglePasswordIcon">visibility</span>
+          </button>
+        </div>
+      </div>
 
-      <button type="submit" class="login-btn">Login to Dashboard</button>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <input type="checkbox" name="remember_me" class="h-4 w-4 rounded border-slate-300 text-blue-600">
+          Remember me
+        </label>
+        <a href="{% url 'forgot_password' %}" class="text-sm font-extrabold text-blue-700 hover:underline">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="login-btn w-full rounded-2xl px-5 py-3.5 text-base font-black text-white transition">
+        Login to Dashboard
+      </button>
     </form>
 
-    <div class="mt-4 flex items-center gap-3 text-sm">
-      <a href="{% url 'register' %}" class="font-bold text-blue-600 hover:text-blue-700">Create Account</a>
-      <span class="text-slate-400">|</span>
-      <a href="{% url 'forgot_password' %}" class="font-bold text-blue-600 hover:text-blue-700">Reset Access</a>
+    <div class="mt-4 text-sm font-extrabold text-blue-700">
+      <a href="{% url 'register' %}" class="hover:underline">Create Account</a>
+      <span class="mx-2 text-slate-300">|</span>
+      <a href="{% url 'forgot_password' %}" class="hover:underline">Reset Access</a>
     </div>
   </div>
-</section>
+</div>
 
 <script>
   (function () {
-    const btn = document.getElementById("togglePassword");
-    const input = document.getElementById("passwordInput");
-    if (!btn || !input) return;
-    btn.addEventListener("click", () => {
-      const isPwd = input.type === "password";
-      input.type = isPwd ? "text" : "password";
-      btn.innerHTML = isPwd
-        ? '<span class="material-symbols-outlined" style="font-size:20px;">visibility_off</span>'
-        : '<span class="material-symbols-outlined" style="font-size:20px;">visibility</span>';
+    const button = document.getElementById("togglePassword");
+    const input = document.getElementById("loginPassword");
+    const icon = document.getElementById("togglePasswordIcon");
+    if (!button || !input || !icon) return;
+    button.addEventListener("click", function () {
+      const next = input.type === "password" ? "text" : "password";
+      input.type = next;
+      icon.textContent = next === "password" ? "visibility" : "visibility_off";
     });
   })();
 </script>

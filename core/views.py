@@ -416,33 +416,26 @@ def _parse_bulk_requirements(raw_text):
 
         if not cols:
             continue
+        remark_text = ""
         if len(cols) == 1:
             field_names = [cols[0]]
             section_name = current_section
         else:
             section_name = cols[0] or current_section
-            if section_name.strip().lower() not in known_sections:
-                field_names = [c for c in cols if c]
-                section_name = current_section
+            normalized_section = section_name.strip().lower()
+            if normalized_section in known_sections:
+                field_names = [cols[1]] if len(cols) > 1 and cols[1] else []
+                remark_text = cols[2].strip() if len(cols) > 2 else ""
             else:
-                # Typical bulk format: Category, Field Name, Remark
-                # Support: Category, Field1, Field2, Field3 (no/short remarks)
+                section_name = current_section
                 field_names = []
-                if len(cols) > 1 and cols[1]:
-                    field_names.append(cols[1])
-                for extra in cols[2:]:
-                    extra = (extra or "").strip()
-                    if not extra:
-                        continue
-                    # Skip long remarks; keep short extra field names.
-                    if len(extra) > 40:
-                        continue
-                    low = extra.lower()
-                    if low in {"yes", "no", "if applicable"}:
-                        continue
-                    if low.startswith(("e.g", "eg", "example")):
-                        continue
-                    field_names.append(extra)
+                if cols:
+                    joined = [c for c in cols if c]
+                    if len(joined) > 1:
+                        field_names.append(joined[0])
+                        remark_text = joined[1].strip() if len(joined) > 1 else ""
+                    elif joined:
+                        field_names.append(joined[0])
 
         if section_name:
             current_section = section_name
@@ -457,7 +450,11 @@ def _parse_bulk_requirements(raw_text):
             if not clean_field:
                 continue
             if kind == "DATA":
-                profile_fields.append(clean_field)
+                clean_remark = re.sub(r"\s+", " ", str(remark_text or "")).strip().strip('"')
+                if clean_remark:
+                    profile_fields.append(f"{clean_field}||{clean_remark}")
+                else:
+                    profile_fields.append(clean_field)
             else:
                 docs.append(f"{kind}|{clean_field}")
 
@@ -673,7 +670,8 @@ def _extract_apply_submission(request, profile, vacancy):
         required_profile_fields=required_profile_fields,
     )
     requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
-    use_requested_only = bool(required_profile_fields)
+    has_vacancy_specific_setup = bool(required_profile_fields or required_docs)
+    use_requested_only = has_vacancy_specific_setup
     payload = {}
     selected_steps = []
 
@@ -1965,7 +1963,8 @@ def confirm_send_to_admin(request):
                 row["exists"] = row["value"] not in {"", "Not uploaded yet"}
 
     requested_profile_rows = _build_requested_profile_rows(step_data, required_profile_fields)
-    use_requested_only = bool(required_profile_fields)
+    has_vacancy_specific_setup = bool(required_profile_fields or required_docs)
+    use_requested_only = has_vacancy_specific_setup
     use_draft_payload = bool(draft_payload) and _payload_has_any_values(draft_payload)
     selected_default = []
     step_cards = []
@@ -3080,6 +3079,9 @@ def admin_save_vacancy(request):
     if not title or not organization or not last_date:
         messages.error(request, "Title, organization aur last date required hai.")
         return redirect("admin_option_control", category=option_scope if option_scope in {Vacancy.CATEGORY_GOVERNMENT, Vacancy.CATEGORY_STUDENT} else Vacancy.CATEGORY_GOVERNMENT)
+    if not required_documents and not required_profile_fields:
+        messages.error(request, "Kam se kam ek field ya document add karo. Blank option save nahi hoga.")
+        return redirect("admin_option_control", category=option_scope if option_scope in {Vacancy.CATEGORY_GOVERNMENT, Vacancy.CATEGORY_STUDENT} else Vacancy.CATEGORY_GOVERNMENT)
 
     try:
         parsed_date = date.fromisoformat(last_date)
@@ -3177,6 +3179,9 @@ def admin_update_vacancy(request, vacancy_id):
 
     if not title or not organization or not last_date:
         messages.error(request, "Edit ke liye title, organization, last date required hai.")
+        return redirect("admin_option_control", category=option_scope)
+    if not required_documents and not required_profile_fields:
+        messages.error(request, "Kam se kam ek field ya document add karo. Blank option save nahi hoga.")
         return redirect("admin_option_control", category=option_scope)
 
     try:

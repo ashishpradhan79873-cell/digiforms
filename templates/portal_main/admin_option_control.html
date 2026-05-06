@@ -198,16 +198,6 @@
           <label class="text-sm font-semibold text-slate-700"><input type="checkbox" name="hidden_from_users"> Hide To User</label>
           <button type="submit" class="btn btn-green">Add Option</button>
         </div>
-        <div class="md:col-span-2 lg:col-span-4">
-          <label class="mini-label">Visible Users (username/mobile/id)</label>
-          <textarea
-            name="visible_to_users"
-            class="mini-input"
-            rows="3"
-            placeholder="Blank chhodo = sab users ko dikhega&#10;ashish&#10;9876543210&#10;12"
-          ></textarea>
-          <p class="mt-1 text-[11px] text-slate-500 font-semibold">Jin users ko ye vacancy dikhani hai unka username, mobile ya user/profile id line by line daalo.</p>
-        </div>
       </form>
     </section>
 
@@ -533,6 +523,8 @@
       function bindRow(row) {
         const removeBtn = row.querySelector("[data-remove-field-row]");
         const nameEl = row.querySelector("[data-field-name]");
+        const typeEl = row.querySelector("[data-field-type]");
+        const commentEl = row.querySelector("[data-field-comment]");
         if (removeBtn) {
           removeBtn.addEventListener("click", () => {
             row.remove();
@@ -541,6 +533,8 @@
           });
         }
         if (nameEl) nameEl.addEventListener("input", () => syncFieldRows(box));
+        if (typeEl) typeEl.addEventListener("change", () => syncFieldRows(box));
+        if (commentEl) commentEl.addEventListener("input", () => syncFieldRows(box));
       }
 
       function addRow() {

@@ -257,7 +257,7 @@
     <button type="submit" name="submit_mode" value="save_only" class="inline-flex rounded-xl bg-amber-600 px-5 py-2 text-sm font-bold text-white hover:bg-amber-700">Save Only</button>
     <button type="submit" name="submit_mode" value="save_master" class="inline-flex rounded-xl bg-cyan-700 px-5 py-2 text-sm font-bold text-white hover:bg-cyan-800">Save In Master Data</button>
     <a href="{% url 'apply_profile_preview' %}" class="inline-flex rounded-xl bg-indigo-700 px-5 py-2 text-sm font-bold text-white hover:bg-indigo-800">View Profile</a>
-    <a href="{% url 'role_select' %}" class="inline-flex rounded-xl bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-black">Back</a>
+    <a href="{% url 'master_data_option' %}" class="inline-flex rounded-xl bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-black">Back</a>
     <button type="button" id="openPaymentPanelBtn" class="inline-flex rounded-xl bg-blue-700 px-5 py-2 text-sm font-bold text-white hover:bg-blue-800">
       <span class="material-symbols-outlined" style="font-size:16px;">payments</span> Pay
     </button>
@@ -284,6 +284,7 @@
     const mobilePrevPageBtn = document.getElementById("mobilePrevPageBtn");
     const mobileNextPageBtn = document.getElementById("mobileNextPageBtn");
     const mobilePageChunkSize = Math.max(parseInt("{{ mobile_page_size|default:6 }}", 10) || 6, 1);
+    const mobilePageMaxCount = 2;
     let activeMobilePage = 0;
     let mobilePageModels = [];
 
@@ -292,22 +293,58 @@
     }
 
     function buildMobilePageModels() {
-      mobilePageModels = [];
+      const rawModels = [];
       mobilePages.forEach((page) => {
         const rows = Array.from(page.querySelectorAll(".row-line"));
         const pageTitle = page.getAttribute("data-page-title") || "Step";
         if (!rows.length) {
-          mobilePageModels.push({ title: pageTitle, page, rows: [] });
+          rawModels.push({ title: pageTitle, entries: [{ page, rows: [] }] });
           return;
         }
         for (let start = 0; start < rows.length; start += mobilePageChunkSize) {
           const chunk = rows.slice(start, start + mobilePageChunkSize);
           const suffix = rows.length > mobilePageChunkSize ? " (" + (Math.floor(start / mobilePageChunkSize) + 1) + ")" : "";
-          mobilePageModels.push({ title: pageTitle + suffix, page, rows: chunk });
+          rawModels.push({ title: pageTitle + suffix, entries: [{ page, rows: chunk }] });
         }
       });
+
+      const reviewModels = rawModels.filter((item) => item.entries.some((entry) => (entry.page.getAttribute("data-page-title") || "") === "Review & Submit"));
+      const contentModels = rawModels.filter((item) => !item.entries.some((entry) => (entry.page.getAttribute("data-page-title") || "") === "Review & Submit"));
+
+      if (!contentModels.length && reviewModels.length) {
+        mobilePageModels = reviewModels;
+        return;
+      }
+
+      if (contentModels.length <= mobilePageMaxCount) {
+        mobilePageModels = contentModels.slice(0, mobilePageMaxCount);
+      } else {
+        const firstBucketCount = Math.ceil(contentModels.length / mobilePageMaxCount);
+        mobilePageModels = [
+          {
+            title: "Page 1",
+            entries: contentModels.slice(0, firstBucketCount).flatMap((item) => item.entries),
+          },
+          {
+            title: "Page 2",
+            entries: contentModels.slice(firstBucketCount).flatMap((item) => item.entries),
+          },
+        ];
+      }
+
+      if (reviewModels.length) {
+        if (!mobilePageModels.length) {
+          mobilePageModels = reviewModels;
+        } else {
+          mobilePageModels[mobilePageModels.length - 1].entries = mobilePageModels[mobilePageModels.length - 1].entries.concat(
+            reviewModels.flatMap((item) => item.entries)
+          );
+          mobilePageModels[mobilePageModels.length - 1].title = mobilePageModels.length === 1 ? "Page 1" : "Page 2";
+        }
+      }
+
       if (!mobilePageModels.length) {
-        mobilePageModels = mobilePages.map((page) => ({ title: page.getAttribute("data-page-title") || "Step", page, rows: [] }));
+        mobilePageModels = mobilePages.map((page) => ({ title: page.getAttribute("data-page-title") || "Step", entries: [{ page, rows: [] }] }));
       }
     }
 
@@ -325,10 +362,12 @@
       mobilePager.style.display = "block";
       activeMobilePage = Math.max(0, Math.min(activeMobilePage, mobilePageModels.length - 1));
       const currentModel = mobilePageModels[activeMobilePage];
+      const activePages = new Set((currentModel.entries || []).map((entry) => entry.page));
       mobilePages.forEach((page) => {
-        const isCurrentPage = page === currentModel.page;
+        const isCurrentPage = activePages.has(page);
         page.classList.toggle("is-active", isCurrentPage);
-        const currentRows = currentModel.rows || [];
+        const entry = (currentModel.entries || []).find((item) => item.page === page);
+        const currentRows = entry ? (entry.rows || []) : [];
         const hasChunks = page.querySelectorAll(".row-line").length > 0;
         page.querySelectorAll(".row-line").forEach((row) => {
           row.style.display = (!isCurrentPage || !hasChunks || currentRows.includes(row)) ? "" : "none";

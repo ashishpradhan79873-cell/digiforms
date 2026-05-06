@@ -122,6 +122,10 @@
     border-radius: 10px;
     font-weight: 800;
   }
+  .btn-primary.is-loading {
+    opacity:.75;
+    pointer-events:none;
+  }
   .btn-primary { background:#1676f3; color:#fff; border:1px solid #1676f3; padding: 9px 16px; font-size: 14px; }
   .btn-secondary { background:#fff; color:#1f314c; border:1px solid #c7d1df; padding: 9px 14px; font-size: 14px; }
   .btn-soft { background:#e7f0ff; color:#1668d6; border:1px solid #b7c9ea; padding: 8px 12px; font-size:12px; }
@@ -181,6 +185,37 @@
   .subject-add-btn:hover { border-color:#93c5fd; color:#1d4ed8; background:#f8fbff; }
   .subject-note { margin-top:16px; border:1px solid #cfe0ff; background:#edf5ff; border-radius:16px; padding:14px 16px; color:#1d4ed8; font-size:13px; font-weight:700; }
   .subject-extra-wrap { margin-top:16px; }
+  .upload-overlay {
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.45);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:60;
+    padding:20px;
+  }
+  .upload-overlay.open { display:flex; }
+  .upload-overlay-card {
+    width:min(360px, 100%);
+    background:#fff;
+    border-radius:18px;
+    padding:22px 20px;
+    box-shadow:0 25px 60px rgba(15,23,42,.25);
+    text-align:center;
+  }
+  .upload-spinner {
+    width:42px;
+    height:42px;
+    border-radius:999px;
+    border:4px solid #dbeafe;
+    border-top-color:#1676f3;
+    margin:0 auto 14px;
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin {
+    to { transform:rotate(360deg); }
+  }
 
   @media (max-width: 1024px) {
     .layout-wrap { grid-template-columns: 1fr; }
@@ -218,6 +253,13 @@
 </style>
 
 <div class="layout-wrap">
+  <div id="uploadOverlay" class="upload-overlay" aria-hidden="true">
+    <div class="upload-overlay-card">
+      <div class="upload-spinner"></div>
+      <div class="text-lg font-black text-slate-900">Uploading documents...</div>
+      <div class="mt-2 text-sm font-semibold text-slate-500">Photo ya document Cloud par save ho raha hai. Thoda wait karein.</div>
+    </div>
+  </div>
   <aside class="sidebar">
     <div class="brand-block">
       <div class="flex items-center gap-3">
@@ -266,7 +308,7 @@
 
     <div class="flex items-start justify-between gap-4">
       <div></div>
-      <a href="{% url 'role_select' %}" class="btn-secondary">Back</a>
+      <a href="{% url 'master_data_option' %}" class="btn-secondary">Back</a>
     </div>
     <section class="form-card">
 
@@ -305,7 +347,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -342,7 +384,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -376,7 +418,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -408,7 +450,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -441,7 +483,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -523,7 +565,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save</button></div>
       </form>
       {% endif %}
 
@@ -592,7 +634,7 @@
             </div>
           </div>
         </div>
-        <div class="card-footer"><a href="{% url 'role_select' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Finish</button></div>
+        <div class="card-footer"><a href="{% url 'master_data_option' %}" class="btn-secondary">Cancel</a><button type="submit" class="btn-primary">Save and Finish</button></div>
       </form>
       {% endif %}
 
@@ -613,6 +655,7 @@
   };
 
   const removeModes = {};
+  const uploadOverlay = document.getElementById('uploadOverlay');
 
   function bindRemove(selector, tableId) {
     document.querySelectorAll(selector).forEach((btn) => {
@@ -731,6 +774,21 @@
       });
     });
   }
+
+  document.querySelectorAll('form[enctype="multipart/form-data"]').forEach((form) => {
+    form.addEventListener('submit', function () {
+      const hasFile = Array.from(form.querySelectorAll('input[type="file"]')).some((input) => input.files && input.files.length > 0);
+      const submitBtn = form.querySelector('.btn-primary');
+      if (submitBtn) {
+        submitBtn.classList.add('is-loading');
+        submitBtn.textContent = 'Saving...';
+      }
+      if (hasFile && uploadOverlay) {
+        uploadOverlay.classList.add('open');
+        uploadOverlay.setAttribute('aria-hidden', 'false');
+      }
+    });
+  });
 
   bindFilePreviewHandlers();
 
