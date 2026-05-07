@@ -574,6 +574,8 @@
         {% csrf_token %}
         <div class="card-head"><div class="card-title">Section 7: Document Upload</div></div>
         <div class="card-body">
+          <input type="hidden" name="passport_photo_url" id="passport_photo_url">
+          <input type="hidden" name="signature_url" id="signature_url">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div class="text-sm font-extrabold text-slate-900">Uploaded Documents</div>
             <button type="button" id="toggleUploadedDocs" class="btn-soft">View Uploaded</button>
@@ -613,7 +615,17 @@
                 <div class="text-sm font-extrabold text-slate-900">Other Documents</div>
                 <div class="mt-3 grid gap-3 md:grid-cols-2">
                   {% for d in uploaded_list %}
-                    {% if d.file and d.file.url %}
+                    {% if d.file_url and "res.cloudinary.com" in d.file_url and "Allowed%20formats" not in d.file_url and "Folder%20fixed" not in d.file_url and "Resource%20type" not in d.file_url %}
+                      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div class="text-sm font-extrabold text-slate-900">{{ d.title }}</div>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                          <a class="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-3 py-2 text-sm font-extrabold text-white hover:bg-blue-800" href="{{ d.file_url }}" target="_blank" rel="noopener">
+                            <span class="material-symbols-outlined" style="font-size:18px;">open_in_new</span> Open
+                          </a>
+                          <span class="text-xs font-semibold text-slate-500">{{ d.original_name }}</span>
+                        </div>
+                      </div>
+                    {% elif d.file and d.file.url %}
                       <div class="rounded-2xl border border-slate-200 bg-white p-4">
                         <div class="text-sm font-extrabold text-slate-900">{{ d.title }}</div>
                         <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -667,6 +679,8 @@
                   <td>{{ doc.title }} (Required: {{ doc.required }})</td>
                   <td>
                     <input id="doc-input-{{ forloop.counter }}" type="file" name="{{ doc.field_name }}" class="input" data-preview-target="doc-preview-{{ forloop.counter }}" data-file-name-target="doc-name-{{ forloop.counter }}">
+                    <input type="hidden" name="doc_url__{{ doc.field_name }}" id="doc-url-{{ forloop.counter }}">
+                    <input type="hidden" name="doc_name__{{ doc.field_name }}" id="doc-oname-{{ forloop.counter }}">
                     <div class="file-meta mt-1">
                       {% if doc.uploaded %}<span class="text-emerald-700 font-semibold">Uploaded</span>{% else %}<span class="text-slate-500 font-semibold">Pending</span>{% endif %}
                       <span id="doc-name-{{ forloop.counter }}" class="file-name">{% if doc.uploaded_name %}{{ doc.uploaded_name }}{% endif %}</span>
@@ -718,6 +732,109 @@
     toggleUploadedDocs.addEventListener('click', function () {
       uploadedDocsPanel.classList.toggle('hidden');
       toggleUploadedDocs.textContent = uploadedDocsPanel.classList.contains('hidden') ? 'View Uploaded' : 'Hide Uploaded';
+    });
+  }
+
+  // Signed direct upload (client -> Cloudinary). Avoids server->Cloudinary network issues and no preset needed.
+  const CLOUD_NAME = "{{ cloudinary_cloud_name|default:'' }}";
+  const formEl = document.querySelector("form[enctype='multipart/form-data']");
+  const passportInput = document.getElementById("passport-photo-input");
+  const signatureInput = document.getElementById("signature-input");
+  const passportUrlEl = document.getElementById("passport_photo_url");
+  const signatureUrlEl = document.getElementById("signature_url");
+  const csrfToken = "{{ csrf_token }}";
+
+  function slugifyName(input) {
+    const raw = String(input || "").trim().toLowerCase();
+    let out = "";
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      const isNum = ch >= "0" && ch <= "9";
+      const isAZ = ch >= "a" && ch <= "z";
+      if (isAZ || isNum) out += ch;
+      else if (ch === " " || ch === "-" || ch === "_" || ch === ".") out += "_";
+    }
+    out = out.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+    return out || "upload";
+  }
+
+  async function uploadSignedToCloudinary(file) {
+    if (!CLOUD_NAME) throw new Error("Cloudinary cloud name missing");
+    const isPdf = (file && (file.type || "").toLowerCase() === "application/pdf") || (file && (file.name || "").toLowerCase().endsWith(".pdf"));
+    const resourceType = isPdf ? "raw" : "image";
+    const base = slugifyName((file && file.name) ? file.name.replace(/\.[^.]+$/, "") : "");
+    const publicId = base + "_" + Date.now();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = "digiform_uploads";
+
+    const signFd = new FormData();
+    signFd.append("timestamp", String(timestamp));
+    signFd.append("folder", folder);
+    signFd.append("public_id", publicId);
+    signFd.append("resource_type", resourceType);
+    const signResp = await fetch("{% url 'cloudinary_sign' %}", {
+      method: "POST",
+      body: signFd,
+      credentials: "same-origin",
+      headers: { "X-CSRFToken": csrfToken }
+    });
+    const signData = await signResp.json().catch(() => ({}));
+    if (!signResp.ok || !signData.signature || !signData.api_key) {
+      throw new Error(signData.error || "Signature failed");
+    }
+
+    const endpoint = "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + resourceType + "/upload";
+    const fd = new FormData();
+    fd.append("api_key", signData.api_key);
+    fd.append("timestamp", signData.timestamp);
+    fd.append("signature", signData.signature);
+    fd.append("folder", folder);
+    fd.append("public_id", publicId);
+    fd.append("file", file);
+    const resp = await fetch(endpoint, { method: "POST", body: fd });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.secure_url) {
+      const msg = data.error && data.error.message ? data.error.message : "Upload failed";
+      throw new Error(msg);
+    }
+    return { url: data.secure_url, name: file.name || "" };
+  }
+
+  async function directUploadIfNeeded(inputEl, urlEl, nameEl) {
+    if (!inputEl) return;
+    const file = (inputEl.files || [])[0];
+    if (!file) return;
+    const uploaded = await uploadSignedToCloudinary(file);
+    if (urlEl) urlEl.value = uploaded.url;
+    if (nameEl) nameEl.value = uploaded.name || file.name || "";
+    // Clear file so server doesn't try to upload again.
+    inputEl.value = "";
+  }
+
+  if (formEl && CLOUD_NAME) {
+    formEl.addEventListener("submit", async function (e) {
+      // Only run on documents step; other steps don't have these ids.
+      if (!passportInput && !signatureInput) return;
+      try {
+        if (uploadOverlay) uploadOverlay.classList.add("show");
+        // Passport + signature
+        await directUploadIfNeeded(passportInput, passportUrlEl, null);
+        await directUploadIfNeeded(signatureInput, signatureUrlEl, null);
+
+        // Required docs rows
+        const docInputs = Array.from(formEl.querySelectorAll("input[type='file'][id^='doc-input-']"));
+        for (const inp of docInputs) {
+          const id = inp.id || "";
+          const num = id.split("-").pop();
+          const urlEl = document.getElementById("doc-url-" + num);
+          const onameEl = document.getElementById("doc-oname-" + num);
+          await directUploadIfNeeded(inp, urlEl, onameEl);
+        }
+      } catch (err) {
+        if (uploadOverlay) uploadOverlay.classList.remove("show");
+        e.preventDefault();
+        alert("Cloud upload failed: " + (err && err.message ? err.message : err));
+      }
     });
   }
 

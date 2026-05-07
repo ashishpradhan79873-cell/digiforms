@@ -80,6 +80,9 @@ class UserProfile(models.Model):
     avatar        = models.ImageField(upload_to='profile_avatars/', null=True, blank=True)
     photo         = models.ImageField(upload_to='profile_photos/', null=True, blank=True)
     signature     = models.ImageField(upload_to='profile_signatures/', null=True, blank=True)
+    # Unsigned direct upload support (Cloudinary URL stored, no server upload needed)
+    photo_url     = models.URLField(max_length=800, blank=True)
+    signature_url = models.URLField(max_length=800, blank=True)
     chat_enabled  = models.BooleanField(default=False)
     master_data_last_saved_at = models.DateTimeField(null=True, blank=True)
     master_data_unmask_until = models.DateTimeField(null=True, blank=True)
@@ -108,7 +111,9 @@ class UserProfile(models.Model):
 class UserDocument(models.Model):
     profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='documents')
     title   = models.CharField(max_length=120, blank=True)
-    file    = models.FileField(upload_to='profile_documents/')
+    file    = models.FileField(upload_to='profile_documents/', null=True, blank=True)
+    file_url = models.URLField(max_length=800, blank=True)
+    original_name = models.CharField(max_length=260, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -152,10 +152,9 @@ if USE_CLOUDINARY:
     if _cloudinary_proxy:
         CLOUDINARY_STORAGE["API_PROXY"] = _cloudinary_proxy
 
-    # Cloudinary can intermittently fail on some hosts; use hybrid storage (cloud-first, local fallback).
-    DEFAULT_FILE_STORAGE = "portal_main.storage.HybridMediaStorage"
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
     STORAGES = {
-        "default": {"BACKEND": "portal_main.storage.HybridMediaStorage"},
+        "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 else:

@@ -12,7 +12,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+import hashlib
+import hmac
 import io
+import os
 import zipfile
 
 from .models import DocumentRule, MasterDataField, PortalNews, UserDocument, UserProfile, WalletTransaction
@@ -387,20 +390,80 @@ def _safe_media_url(file_field):
     if not name:
         return ""
     try:
-        if not default_storage.exists(name):
-            return ""
+        # Cloud backends (Cloudinary) par exists() network call kar sakta hai; preview ko break karta hai.
         return file_field.url
     except Exception:
         return ""
 
 
+def _is_valid_cloudinary_url(url):
+    u = str(url or "").strip()
+    if not u:
+        return False
+    low = u.lower()
+    # If someone accidentally saved instruction text or any junk, block it.
+    if "allowed formats" in low or "folder fixed" in low or "resource type" in low:
+        return False
+    return low.startswith("https://res.cloudinary.com/") or low.startswith("http://res.cloudinary.com/")
+
+
+@login_required
+@require_POST
+def cloudinary_sign_view(request):
+    """
+    Signed direct upload helper (no preset needed).
+    Client uploads directly to Cloudinary; server only signs parameters.
+    """
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    api_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
+    api_secret = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+    if not (cloud_name and api_key and api_secret):
+        return JsonResponse({"error": "Cloudinary config missing."}, status=400)
+
+    # Parameters to sign
+    timestamp = str(int(request.POST.get("timestamp") or "0") or 0)
+    folder = (request.POST.get("folder") or "digiform_uploads").strip() or "digiform_uploads"
+    public_id = (request.POST.get("public_id") or "").strip()
+    resource_type = (request.POST.get("resource_type") or "auto").strip().lower() or "auto"
+
+    if timestamp == "0":
+        timestamp = str(int(timezone.now().timestamp()))
+
+    params = {"folder": folder, "timestamp": timestamp}
+    if public_id:
+        params["public_id"] = public_id
+
+    # Cloudinary signature: sha1("k=v&k=v..."+api_secret) with keys sorted.
+    to_sign = "&".join([f"{k}={params[k]}" for k in sorted(params.keys())])
+    signature = hashlib.sha1((to_sign + api_secret).encode("utf-8")).hexdigest()
+
+    return JsonResponse(
+        {
+            "cloud_name": cloud_name,
+            "api_key": api_key,
+            "timestamp": timestamp,
+            "folder": folder,
+            "public_id": public_id,
+            "resource_type": resource_type,
+            "signature": signature,
+        }
+    )
+
+
 def _profile_image_url(profile, title, profile_field):
+    # Unsigned direct-upload URLs (preferred if present)
+    if title == "Passport Photo" and getattr(profile, "photo_url", ""):
+        return profile.photo_url if _is_valid_cloudinary_url(profile.photo_url) else ""
+    if title == "Signature" and getattr(profile, "signature_url", ""):
+        return profile.signature_url if _is_valid_cloudinary_url(profile.signature_url) else ""
     direct = _safe_media_url(profile_field)
     if direct:
         return direct
     doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
     if not doc:
         return ""
+    if getattr(doc, "file_url", ""):
+        return doc.file_url if _is_valid_cloudinary_url(doc.file_url) else ""
     return _safe_media_url(doc.file)
 
 
@@ -413,10 +476,11 @@ def _document_file_info(profile, title, uploaded_map_norm=None):
         doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
     if not doc:
         return {"uploaded": False, "url": "", "name": ""}
-    url = _safe_media_url(doc.file)
+    direct_url = getattr(doc, "file_url", "") or ""
+    url = direct_url if _is_valid_cloudinary_url(direct_url) else _safe_media_url(doc.file)
     if not url:
         return {"uploaded": False, "url": "", "name": ""}
-    name = (doc.file.name or "").split("/")[-1]
+    name = (getattr(doc, "original_name", "") or (doc.file.name or "").split("/")[-1])
     return {"uploaded": True, "url": url, "name": name}
 
 
@@ -1296,6 +1360,8 @@ def master_data_documents_view(request):
         errors = []
         photo = request.FILES.get("passport_photo")
         signature = request.FILES.get("signature")
+        photo_url = (request.POST.get("passport_photo_url") or "").strip()
+        signature_url = (request.POST.get("signature_url") or "").strip()
         if photo:
             err = _validate_file_rule("Passport Size Photo", photo, rule_map)
             if err:
@@ -1331,17 +1397,36 @@ def master_data_documents_view(request):
 
         clear_photo = request.POST.get("clear_passport_photo") == "1"
         clear_signature = request.POST.get("clear_signature") == "1"
-        if photo:
+
+        # If unsigned URLs are provided, store them and skip server-side uploads.
+        if photo_url:
+            if not _is_valid_cloudinary_url(photo_url):
+                messages.error(request, "Passport photo upload URL invalid hai. Dobara upload karo.")
+                return redirect("master_data_documents")
+            profile.photo_url = photo_url
+            profile.photo = None
+        elif photo:
             # Optimize before cloud upload (faster + fewer timeouts)
             optimized_photo, _ = _optimize_image_upload(photo, max_side=1400, quality=82, out_ext="jpg")
             profile.photo = optimized_photo
+            profile.photo_url = ""
         elif clear_photo:
             profile.photo = None
-        if signature:
+            profile.photo_url = ""
+
+        if signature_url:
+            if not _is_valid_cloudinary_url(signature_url):
+                messages.error(request, "Signature upload URL invalid hai. Dobara upload karo.")
+                return redirect("master_data_documents")
+            profile.signature_url = signature_url
+            profile.signature = None
+        elif signature:
             optimized_signature, _ = _optimize_image_upload(signature, max_side=900, quality=82, out_ext="jpg")
             profile.signature = optimized_signature
+            profile.signature_url = ""
         elif clear_signature:
             profile.signature = None
+            profile.signature_url = ""
         try:
             profile.save()
         except Exception as e:
@@ -1353,9 +1438,24 @@ def master_data_documents_view(request):
             field_name = spec["field_name"]
             title = spec["title"]
             file_obj = request.FILES.get(field_name)
+            direct_url = (request.POST.get(f"doc_url__{field_name}") or "").strip()
+            direct_name = (request.POST.get(f"doc_name__{field_name}") or "").strip()
             clear_existing = request.POST.get(f"clear_existing__{field_name}") == "1"
             if clear_existing and not file_obj:
                 profile.documents.filter(title__iexact=title).delete()
+                continue
+            if direct_url:
+                if not _is_valid_cloudinary_url(direct_url):
+                    messages.error(request, f"{title}: upload URL invalid hai. Dobara upload karo.")
+                    return redirect("master_data_documents")
+                existing = profile.documents.filter(title__iexact=title).first()
+                if existing:
+                    existing.file_url = direct_url
+                    existing.original_name = direct_name or existing.original_name
+                    existing.save(update_fields=["file_url", "original_name"])
+                else:
+                    UserDocument.objects.create(profile=profile, title=title, file_url=direct_url, original_name=direct_name)
+                saved_count += 1
                 continue
             if not file_obj:
                 continue
@@ -1378,6 +1478,9 @@ def master_data_documents_view(request):
                     return redirect("master_data_documents")
             saved_count += 1
 
+        extra_urls = request.POST.getlist("doc_url[]")
+        extra_names = request.POST.getlist("doc_name[]")
+
         for idx, file_obj in enumerate(extra_files):
             title = "Additional Document"
             if idx < len(extra_titles) and extra_titles[idx].strip():
@@ -1398,6 +1501,28 @@ def master_data_documents_view(request):
                 except Exception as e:
                     messages.error(request, f"{title}: upload failed. Error: {e}")
                     return redirect("master_data_documents")
+            saved_count += 1
+
+        # Unsigned extra documents (no file upload)
+        for idx, url in enumerate(extra_urls):
+            url = (url or "").strip()
+            if not url:
+                continue
+            if not _is_valid_cloudinary_url(url):
+                messages.error(request, "Extra document URL invalid hai. Dobara upload karo.")
+                return redirect("master_data_documents")
+            title = "Additional Document"
+            if idx < len(extra_titles) and extra_titles[idx].strip():
+                title = extra_titles[idx].strip()
+            name = extra_names[idx].strip() if idx < len(extra_names) else ""
+            existing = profile.documents.filter(title__iexact=title).first()
+            if existing:
+                existing.file_url = url
+                if name:
+                    existing.original_name = name
+                existing.save(update_fields=["file_url", "original_name"])
+            else:
+                UserDocument.objects.create(profile=profile, title=title, file_url=url, original_name=name)
             saved_count += 1
 
         photo_saved = "Yes" if photo else "No"
@@ -1431,4 +1556,6 @@ def master_data_documents_view(request):
     ctx["uploaded_list"] = uploaded_list
     ctx["passport_photo_url"] = _profile_image_url(profile, "Passport Photo", profile.photo)
     ctx["signature_url"] = _profile_image_url(profile, "Signature", profile.signature)
+    ctx["cloudinary_cloud_name"] = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    ctx["cloudinary_unsigned_preset"] = os.getenv("CLOUDINARY_UNSIGNED_PRESET", "").strip()
     return render(request, "accounts/master_data_step.html", ctx)

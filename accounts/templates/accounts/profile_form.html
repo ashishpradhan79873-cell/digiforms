@@ -209,7 +209,7 @@
                             {% for doc in documents %}
                             <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                                 <span>{{ doc.title|default:"Untitled" }}</span>
-                                <a href="{{ doc.file.url }}" target="_blank" class="text-primary font-semibold hover:underline">View</a>
+                                <a href="{{ doc.file_url|default:doc.file.url }}" target="_blank" class="text-primary font-semibold hover:underline">View</a>
                             </div>
                             {% endfor %}
                         </div>
@@ -227,8 +227,8 @@
                             <p class="mt-2 text-xs text-slate-500">Sirf photo upload section yahan hai.</p>
                         </div>
                         <div class="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                            {% if profile.photo %}
-                            <img id="photo-preview" src="{{ profile.photo.url }}" class="w-full h-40 object-cover rounded-lg" alt="Profile photo">
+                            {% if profile.photo_url or profile.photo %}
+                            <img id="photo-preview" src="{{ profile.photo_url|default:profile.photo.url }}" class="w-full h-40 object-cover rounded-lg" alt="Profile photo">
                             {% else %}
                             <img id="photo-preview" src="https://placehold.co/400x260/e2e8f0/64748b?text=Photo" class="w-full h-40 object-cover rounded-lg" alt="Profile photo">
                             {% endif %}

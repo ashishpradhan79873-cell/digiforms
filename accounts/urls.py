@@ -6,6 +6,7 @@ urlpatterns = [
     path('register/',    views.register_view,    name='register'),
     path('forgot-password/', views.forgot_password_view, name='forgot_password'),
     path('logout/',      views.logout_view,      name='logout'),
+    path('cloudinary/sign/', views.cloudinary_sign_view, name='cloudinary_sign'),
     path('role-select/', views.role_select_view, name='role_select'),
     path('master-data-option/', views.master_data_option_view, name='master_data_option'),
     path('wallet/', views.wallet_view, name='wallet'),

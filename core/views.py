@@ -850,10 +850,15 @@ def _profile_step_data(profile):
             ("Graduation Subjects", profile.graduation_subjects),
         ],
         "documents": (
-            [("Passport Photo", profile.photo.url)] if profile.photo else []
+            [("Passport Photo", profile.photo_url)] if getattr(profile, "photo_url", "") else []
         )
-        + ([("Signature", profile.signature.url)] if profile.signature else [])
-        + [(doc.title or "Document", doc.file.url) for doc in profile.documents.all()],
+        + ([("Passport Photo", profile.photo.url)] if getattr(profile, "photo", None) else [])
+        + ([("Signature", profile.signature_url)] if getattr(profile, "signature_url", "") else [])
+        + ([("Signature", profile.signature.url)] if getattr(profile, "signature", None) else [])
+        + [
+            (doc.title or "Document", (getattr(doc, "file_url", "") or (doc.file.url if getattr(doc, "file", None) else "")))
+            for doc in profile.documents.all()
+        ],
     }
     _append_extra_rows(step_data["personal"], profile.personal_extra_rows)
     _append_extra_rows(step_data["address"], profile.address_extra_rows)
@@ -1334,14 +1339,18 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
     existing_labels = set()
 
     available = {}
-    if profile.photo:
+    if getattr(profile, "photo_url", ""):
+        available["passport photo"] = profile.photo_url
+    elif getattr(profile, "photo", None):
         available["passport photo"] = profile.photo.url
-    if profile.signature:
+    if getattr(profile, "signature_url", ""):
+        available["signature"] = profile.signature_url
+    elif getattr(profile, "signature", None):
         available["signature"] = profile.signature.url
     for doc in profile.documents.all():
         title = (doc.title or "").strip().lower()
         if title:
-            available[title] = doc.file.url
+            available[title] = getattr(doc, "file_url", "") or (doc.file.url if getattr(doc, "file", None) else "")
 
     existing_master = {}
     for rows in step_data.values():
@@ -1387,14 +1396,18 @@ def _inject_required_docs_rows(profile, vacancy, step_data):
 
 def _build_required_doc_rows(profile, required_docs, step_data=None, required_profile_fields=None):
     available = {}
-    if profile.photo:
+    if getattr(profile, "photo_url", ""):
+        available["passport photo"] = profile.photo_url
+    elif getattr(profile, "photo", None):
         available["passport photo"] = profile.photo.url
-    if profile.signature:
+    if getattr(profile, "signature_url", ""):
+        available["signature"] = profile.signature_url
+    elif getattr(profile, "signature", None):
         available["signature"] = profile.signature.url
     for doc in profile.documents.all():
         title = (doc.title or "").strip().lower()
         if title:
-            available[title] = doc.file.url
+            available[title] = getattr(doc, "file_url", "") or (doc.file.url if getattr(doc, "file", None) else "")
 
     existing_master = {}
     for rows_in_step in (step_data or {}).values():
@@ -1497,11 +1510,20 @@ def _demo_document_links(application):
 def _collect_document_links(application):
     profile = application.profile
     docs = []
-    if profile.photo:
+    if getattr(profile, "photo_url", ""):
+        docs.append({"title": "Passport Photo", "url": profile.photo_url})
+    elif getattr(profile, "photo", None):
         docs.append({"title": "Passport Photo", "url": profile.photo.url})
-    if profile.signature:
+    if getattr(profile, "signature_url", ""):
+        docs.append({"title": "Signature", "url": profile.signature_url})
+    elif getattr(profile, "signature", None):
         docs.append({"title": "Signature", "url": profile.signature.url})
-    docs.extend([{"title": d.title or "Document", "url": d.file.url} for d in profile.documents.all()])
+    docs.extend(
+        [
+            {"title": d.title or "Document", "url": (getattr(d, "file_url", "") or (d.file.url if getattr(d, "file", None) else ""))}
+            for d in profile.documents.all()
+        ]
+    )
     return docs or _demo_document_links(application)
 
 

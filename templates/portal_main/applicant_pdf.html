@@ -81,7 +81,7 @@
   <h2>Documents</h2>
   <table>
     {% for doc in documents %}
-    <tr class="doc"><td>{{ doc.title }}</td><td><a target="_blank" href="{{ doc.file.url }}">Download</a></td></tr>
+    <tr class="doc"><td>{{ doc.title }}</td><td><a target="_blank" href="{{ doc.url|default:doc.file.url }}">Download</a></td></tr>
     {% empty %}
     <tr><td colspan="2">No documents uploaded.</td></tr>
     {% endfor %}
