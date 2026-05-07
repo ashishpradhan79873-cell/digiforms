@@ -404,8 +404,13 @@ def _profile_image_url(profile, title, profile_field):
     return _safe_media_url(doc.file)
 
 
-def _document_file_info(profile, title):
-    doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
+def _document_file_info(profile, title, uploaded_map_norm=None):
+    # uploaded_map_norm: {_normalize_doc_name(title): UserDocument}
+    doc = None
+    if uploaded_map_norm is not None:
+        doc = uploaded_map_norm.get(_normalize_doc_name(title))
+    if doc is None:
+        doc = profile.documents.filter(title__iexact=title).order_by("-id").first()
     if not doc:
         return {"uploaded": False, "url": "", "name": ""}
     url = _safe_media_url(doc.file)
@@ -763,6 +768,54 @@ def _open_image_from_upload(file_obj):
     return image
 
 
+def _downscale_for_speed(image, max_side_px):
+    try:
+        max_side_px = int(max_side_px or 0)
+    except Exception:
+        max_side_px = 0
+    if max_side_px <= 0:
+        return image
+    w, h = image.size
+    longest = max(w, h)
+    if longest <= max_side_px:
+        return image
+    ratio = max_side_px / max(longest, 1)
+    out_w = max(int(round(w * ratio)), 1)
+    out_h = max(int(round(h * ratio)), 1)
+    return image.resize((out_w, out_h), Image.Resampling.BILINEAR)
+
+
+def _quick_encode_to_target(image, mime_type, target_bytes):
+    # Fast path: few quality tries, no multi-scale search, no strict padding.
+    if mime_type == "image/png":
+        data = _encode_with_pillow(image, "image/png", 100)
+        return data, image
+
+    quality = 86
+    if target_bytes <= 80 * 1024:
+        quality = 78
+    if target_bytes <= 40 * 1024:
+        quality = 70
+
+    best = b""
+    best_q = quality
+    for q in (quality, quality - 8, quality - 16, quality - 24, 55):
+        q = max(min(int(q), 95), 45)
+        data = _encode_with_pillow(image, mime_type, q)
+        if not best or abs(len(data) - target_bytes) < abs(len(best) - target_bytes):
+            best = data
+            best_q = q
+        if len(data) <= target_bytes:
+            break
+
+    tries = 0
+    while best and len(best) > target_bytes and best_q > 45 and tries < 4:
+        best_q = max(best_q - 6, 45)
+        best = _encode_with_pillow(image, mime_type, best_q)
+        tries += 1
+    return best, image
+
+
 @login_required
 @require_POST
 def document_converter_process_view(request):
@@ -810,6 +863,13 @@ def document_converter_process_view(request):
     except ValueError:
         rotate_deg = 0
 
+    # Fast mode defaults ON for mobile-friendly performance.
+    fast_mode = request.POST.get("fast", "1") == "1"
+    try:
+        max_side = int(request.POST.get("max_side", "1800") or "1800")
+    except ValueError:
+        max_side = 1800
+
     mime_type = out_type
     if out_type == "keep":
         mime_type = file_obj.content_type if file_obj.content_type in {"image/jpeg", "image/png", "image/webp"} else "image/jpeg"
@@ -851,13 +911,19 @@ def document_converter_process_view(request):
 
     image = _resize_no_stretch(image, req_w, req_h)
 
-    best_bytes, work_image = _fit_image_to_target_bytes(
-        image,
-        mime_type,
-        target_bytes,
-        quality_lock=quality_lock,
-        strict_kb=strict_kb,
-    )
+    if fast_mode:
+        image = _downscale_for_speed(image, max_side)
+
+    if fast_mode:
+        best_bytes, work_image = _quick_encode_to_target(image, mime_type, target_bytes)
+    else:
+        best_bytes, work_image = _fit_image_to_target_bytes(
+            image,
+            mime_type,
+            target_bytes,
+            quality_lock=quality_lock,
+            strict_kb=strict_kb,
+        )
 
     if not best_bytes:
         return JsonResponse({"error": "Unable to convert image."}, status=500)
@@ -892,7 +958,10 @@ def document_converter_images_to_pdf_view(request):
         if not (f.content_type or "").startswith("image/"):
             return JsonResponse({"error": f"{f.name}: sirf image files allowed hain."}, status=400)
         try:
-            opened.append(_open_image_from_upload(f))
+            im = _open_image_from_upload(f)
+            # Speed: downscale very large photos before PDF export.
+            im = _downscale_for_speed(im, 2000)
+            opened.append(im)
         except Exception:
             return JsonResponse({"error": f"{f.name}: image read nahi hui."}, status=400)
 
@@ -901,7 +970,7 @@ def document_converter_images_to_pdf_view(request):
 
     pdf_buffer = io.BytesIO()
     first, rest = opened[0], opened[1:]
-    first.save(pdf_buffer, format="PDF", save_all=True, append_images=rest)
+    first.save(pdf_buffer, format="PDF", save_all=True, append_images=rest, resolution=150.0)
     pdf_bytes = pdf_buffer.getvalue()
     for im in opened:
         try:
@@ -949,11 +1018,19 @@ def document_converter_pdf_to_images_view(request):
         image_format = "jpg"
     ext = "jpg" if image_format == "jpg" else "png"
 
+    # Speed: default scale lower on mobile; still readable.
+    try:
+        scale = float(request.POST.get("scale", "1.5") or "1.5")
+    except Exception:
+        scale = 1.5
+    scale = max(min(scale, 2.5), 1.0)
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for idx in range(doc.page_count):
             page = doc.load_page(idx)
-            pix = page.get_pixmap(alpha=False)
+            matrix = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
             if ext == "jpg":
                 img_bytes = pix.tobytes("jpeg")
             else:
@@ -1281,11 +1358,13 @@ def master_data_documents_view(request):
         )
         return redirect("master_data_documents")
 
-    uploaded_map = {doc.title: doc for doc in profile.documents.all()}
+    uploaded_list = list(profile.documents.all())
+    uploaded_map = {doc.title: doc for doc in uploaded_list}
+    uploaded_map_norm = {_normalize_doc_name(doc.title): doc for doc in uploaded_list}
     ctx = _step_context(profile, "documents")
     rendered_specs = []
     for spec in document_specs:
-        info = _document_file_info(profile, spec["title"])
+        info = _document_file_info(profile, spec["title"], uploaded_map_norm=uploaded_map_norm)
         rendered_specs.append(
             {
                 "field_name": spec["field_name"],
@@ -1298,6 +1377,7 @@ def master_data_documents_view(request):
         )
     ctx["document_specs"] = rendered_specs
     ctx["uploaded_map"] = uploaded_map
+    ctx["uploaded_list"] = uploaded_list
     ctx["passport_photo_url"] = _profile_image_url(profile, "Passport Photo", profile.photo)
     ctx["signature_url"] = _profile_image_url(profile, "Signature", profile.signature)
     return render(request, "accounts/master_data_step.html", ctx)

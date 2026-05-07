@@ -619,8 +619,10 @@
       fd.append("rotate_deg", String(rotateDeg));
       fd.append("width", String(reqW));
       fd.append("height", String(reqH));
-      fd.append("quality_lock", "1");
-      fd.append("strict_kb", "1");
+      fd.append("fast", "1");
+      fd.append("max_side", "1800");
+      fd.append("quality_lock", "0");
+      fd.append("strict_kb", "0");
       fd.append("crop_mode", "custom");
       fd.append("crop_x", String(s.left));
       fd.append("crop_y", String(s.top));
