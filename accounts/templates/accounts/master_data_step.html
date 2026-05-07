@@ -812,9 +812,14 @@
   }
 
   if (formEl && CLOUD_NAME) {
+    let signedUploadInProgress = false;
     formEl.addEventListener("submit", async function (e) {
       // Only run on documents step; other steps don't have these ids.
       if (!passportInput && !signatureInput) return;
+      if (signedUploadInProgress) return;
+      e.preventDefault();
+      e.stopPropagation();
+      signedUploadInProgress = true;
       try {
         if (uploadOverlay) uploadOverlay.classList.add("show");
         // Passport + signature
@@ -830,10 +835,13 @@
           const onameEl = document.getElementById("doc-oname-" + num);
           await directUploadIfNeeded(inp, urlEl, onameEl);
         }
+
+        // Continue with normal POST (now without file inputs; URLs are in hidden fields).
+        formEl.submit();
       } catch (err) {
         if (uploadOverlay) uploadOverlay.classList.remove("show");
-        e.preventDefault();
         alert("Cloud upload failed: " + (err && err.message ? err.message : err));
+        signedUploadInProgress = false;
       }
     });
   }
