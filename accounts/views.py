@@ -768,6 +768,29 @@ def _open_image_from_upload(file_obj):
     return image
 
 
+def _optimize_image_upload(file_obj, max_side=1600, quality=82, out_ext="jpg"):
+    # Reduce upload time + timeout/500 risk on hosts by sending smaller images.
+    try:
+        image = Image.open(file_obj)
+        image = ImageOps.exif_transpose(image)
+        image = _flatten_on_white(image)
+        image = _downscale_for_speed(image, max_side)
+        buf = io.BytesIO()
+        if out_ext == "webp":
+            image.save(buf, format="WEBP", quality=int(quality), method=6)
+            mime = "image/webp"
+            ext = "webp"
+        else:
+            image.save(buf, format="JPEG", quality=int(quality), optimize=True, progressive=True)
+            mime = "image/jpeg"
+            ext = "jpg"
+        base = (getattr(file_obj, "name", "") or "upload").rsplit(".", 1)[0]
+        name = f"{base}_opt.{ext}"
+        return ContentFile(buf.getvalue(), name=name), mime
+    except Exception:
+        return file_obj, (file_obj.content_type or "")
+
+
 def _downscale_for_speed(image, max_side_px):
     try:
         max_side_px = int(max_side_px or 0)
@@ -1309,14 +1332,21 @@ def master_data_documents_view(request):
         clear_photo = request.POST.get("clear_passport_photo") == "1"
         clear_signature = request.POST.get("clear_signature") == "1"
         if photo:
-            profile.photo = photo
+            # Optimize before cloud upload (faster + fewer timeouts)
+            optimized_photo, _ = _optimize_image_upload(photo, max_side=1400, quality=82, out_ext="jpg")
+            profile.photo = optimized_photo
         elif clear_photo:
             profile.photo = None
         if signature:
-            profile.signature = signature
+            optimized_signature, _ = _optimize_image_upload(signature, max_side=900, quality=82, out_ext="jpg")
+            profile.signature = optimized_signature
         elif clear_signature:
             profile.signature = None
-        profile.save()
+        try:
+            profile.save()
+        except Exception as e:
+            messages.error(request, f"Upload failed (photo/signature). Try smaller file. Error: {e}")
+            return redirect("master_data_documents")
 
         saved_count = 0
         for spec in document_specs:
@@ -1329,12 +1359,23 @@ def master_data_documents_view(request):
                 continue
             if not file_obj:
                 continue
+            # Optimize images to reduce Cloudinary upload time.
+            if (file_obj.content_type or "").startswith("image/"):
+                file_obj, _ = _optimize_image_upload(file_obj, max_side=1600, quality=82, out_ext="jpg")
             existing = profile.documents.filter(title__iexact=title).first()
             if existing:
                 existing.file = file_obj
-                existing.save()
+                try:
+                    existing.save()
+                except Exception as e:
+                    messages.error(request, f"{title}: upload failed. Error: {e}")
+                    return redirect("master_data_documents")
             else:
-                UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+                try:
+                    UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+                except Exception as e:
+                    messages.error(request, f"{title}: upload failed. Error: {e}")
+                    return redirect("master_data_documents")
             saved_count += 1
 
         for idx, file_obj in enumerate(extra_files):
@@ -1342,11 +1383,21 @@ def master_data_documents_view(request):
             if idx < len(extra_titles) and extra_titles[idx].strip():
                 title = extra_titles[idx].strip()
             existing = profile.documents.filter(title__iexact=title).first()
+            if (file_obj.content_type or "").startswith("image/"):
+                file_obj, _ = _optimize_image_upload(file_obj, max_side=1600, quality=82, out_ext="jpg")
             if existing:
                 existing.file = file_obj
-                existing.save()
+                try:
+                    existing.save()
+                except Exception as e:
+                    messages.error(request, f"{title}: upload failed. Error: {e}")
+                    return redirect("master_data_documents")
             else:
-                UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+                try:
+                    UserDocument.objects.create(profile=profile, title=title, file=file_obj)
+                except Exception as e:
+                    messages.error(request, f"{title}: upload failed. Error: {e}")
+                    return redirect("master_data_documents")
             saved_count += 1
 
         photo_saved = "Yes" if photo else "No"
