@@ -5,3 +5,7 @@ staticfiles/
 venv/
 __pycache__/
 *.pyc
+settings_1.py
+service-account.json
+core/service-account.json
+firebase/service-account.json

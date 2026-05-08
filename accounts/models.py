@@ -198,6 +198,39 @@ class ChatMessage(models.Model):
         return f"{who} - {self.created_at:%Y-%m-%d %H:%M}"
 
 
+class UserToken(models.Model):
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="fcm_tokens")
+    username = models.CharField(max_length=100, default="Guest")
+    token = models.TextField(unique=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return self.username or "Guest"
+
+
+class PushNotificationLog(models.Model):
+    title = models.CharField(max_length=160)
+    body = models.TextField()
+    target_count = models.PositiveIntegerField(default=0)
+    success_count = models.PositiveIntegerField(default=0)
+    failure_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True)
+    sent_by = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.success_count}/{self.target_count})"
+
+
 class DocumentRule(models.Model):
     KIND_ANY = "any"
     KIND_IMAGE = "image"

@@ -9,4 +9,5 @@ tzdata==2025.3
 whitenoise==6.11.0
 cloudinary==1.41.0
 django-cloudinary-storage==0.3.0
+firebase-admin==6.6.0
 

@@ -7,8 +7,10 @@ from .models import (
     MasterDataField,
     PaymentSetting,
     PortalNews,
+    PushNotificationLog,
     UserDocument,
     UserProfile,
+    UserToken,
     Vacancy,
     WalletTransaction,
 )
@@ -25,6 +27,21 @@ admin.site.register(Application)
 admin.site.register(ApplicationHistory)
 admin.site.register(ChatMessage)
 admin.site.register(MasterDataField)
+
+
+@admin.register(UserToken)
+class UserTokenAdmin(admin.ModelAdmin):
+    list_display = ("id", "username", "user", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("username", "user__username", "token")
+    readonly_fields = ("token", "created_at", "updated_at")
+
+
+@admin.register(PushNotificationLog)
+class PushNotificationLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "target_count", "success_count", "failure_count", "sent_by", "created_at")
+    search_fields = ("title", "body", "sent_by", "error_message")
+    readonly_fields = ("title", "body", "target_count", "success_count", "failure_count", "error_message", "sent_by", "created_at")
 
 
 @admin.register(Vacancy)

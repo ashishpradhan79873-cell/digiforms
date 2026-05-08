@@ -3,6 +3,9 @@ from . import views
 
 urlpatterns = [
     path('', views.home_router, name='home'),
+    path("firebase-messaging-sw.js", views.firebase_messaging_sw, name="firebase_messaging_sw"),
+    path("save-token/", views.save_fcm_token, name="save_fcm_token"),
+    path("chat/notify/", views.notify_chat, name="notify_chat"),
     path("terms-conditions/", views.terms_conditions, name="terms_conditions"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
     path("refund-policy/", views.refund_policy, name="refund_policy"),
@@ -83,6 +86,7 @@ urlpatterns = [
     path("admin-panel/documents/", views.admin_documents, name="admin_documents"),
     path("admin-panel/chat/", views.admin_chat, name="admin_chat"),
     path("admin-panel/news/", views.admin_news, name="admin_news"),
+    path("admin-panel/notifications/", views.admin_notifications, name="admin_notifications"),
     path("admin-panel/payment/", views.admin_payment, name="admin_payment"),
     path("admin-panel/chat/send/", views.admin_chat_send, name="admin_chat_send"),
     path(

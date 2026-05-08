@@ -92,5 +92,65 @@
         }
       })();
     </script>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+      import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-messaging.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyArQ2f-2VsSxM9i6LryrUvD7ajuCEJ1pKc",
+        authDomain: "myapplication-517480a3.firebaseapp.com",
+        projectId: "myapplication-517480a3",
+        storageBucket: "myapplication-517480a3.firebasestorage.app",
+        messagingSenderId: "427607033950",
+        appId: "1:427607033950:web:b78f6cd407d2840e3e0ccf",
+      };
+
+      const vapidKey = "BKjuyS-YV0JNmzLxfnjA3eAAomF5HKz0CPFsxeJKLuilrp1P-xMmYKdBjTOuML2pcbMK0DSJFMrfOqgmjvABzkoor";
+      const tokenSaveUrl = "{% url 'save_fcm_token' %}";
+      const csrfToken = "{{ csrf_token }}";
+
+      async function sendTokenToServer(token) {
+        if (!token) return;
+        try {
+          const resp = await fetch(tokenSaveUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({ token }),
+          });
+          if (resp.ok) console.log("FCM token saved to database");
+        } catch (err) {
+          console.log("FCM token save failed:", err);
+        }
+      }
+
+      async function initFcm() {
+        if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+
+        // Register SW at root scope for FCM.
+        const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") return;
+
+        const app = initializeApp(firebaseConfig);
+        const messaging = getMessaging(app);
+
+        const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg });
+        if (token) {
+          console.log("FCM Token:", token);
+          await sendTokenToServer(token);
+        }
+
+        onMessage(messaging, (payload) => {
+          console.log("FCM Foreground:", payload);
+        });
+      }
+
+      initFcm().catch((e) => console.log("FCM init failed:", e));
+    </script>
 </body>
 </html>

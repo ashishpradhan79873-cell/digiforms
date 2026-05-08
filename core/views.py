@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import os
 import zipfile
 import re
 import logging
@@ -15,10 +16,11 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.staticfiles import finders
 from django.core.files.storage import default_storage
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -31,8 +33,10 @@ from accounts.models import (
     MasterDataField,
     PaymentSetting,
     PortalNews,
+    PushNotificationLog,
     UserDocument,
     UserProfile,
+    UserToken,
     Vacancy,
 )
 from PIL import Image
@@ -2418,6 +2422,182 @@ def cancel_own_application(request, application_id):
     return redirect("dashboard")
 
 
+def firebase_messaging_sw(request):
+    sw_path = finders.find("firebase-messaging-sw.js")
+    if not sw_path:
+        raise Http404("firebase-messaging-sw.js not found")
+    with open(sw_path, "rb") as f:
+        content = f.read()
+    resp = HttpResponse(content, content_type="application/javascript")
+    resp["Cache-Control"] = "no-store"
+    return resp
+
+
+def save_fcm_token(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "failed"}, status=400)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"status": "failed", "message": "Invalid JSON"}, status=400)
+
+    token_val = (data.get("token") or "").strip()
+    if not token_val:
+        return JsonResponse({"status": "failed", "message": "Token missing"}, status=400)
+
+    user = request.user if request.user.is_authenticated else None
+    username = user.username if user else "Guest"
+    if user and hasattr(user, "profile") and user.profile.full_name:
+        username = user.profile.full_name
+
+    UserToken.objects.update_or_create(
+        token=token_val,
+        defaults={
+            "user": user,
+            "username": username,
+            "user_agent": request.META.get("HTTP_USER_AGENT", "")[:300],
+            "is_active": True,
+        },
+    )
+    return JsonResponse({"status": "success"})
+
+def notify_chat(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "failed"}, status=400)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        data = request.POST
+
+    receiver_id = data.get("receiver_id", "").strip()
+    message = data.get("message", "Naya message aaya hai!").strip()
+    sender_name = data.get("sender_name", "User").strip()
+
+    if not receiver_id:
+        return JsonResponse({"status": "failed", "error": "Receiver missing"}, status=400)
+
+    if receiver_id.lower() == "admin":
+        tokens = list(UserToken.objects.filter(user__is_staff=True, is_active=True).values_list("token", flat=True).distinct())
+    else:
+        tokens = list(UserToken.objects.filter(username=receiver_id, is_active=True).values_list("token", flat=True).distinct())
+
+    if tokens:
+        _send_push_to_tokens(f"New Message from {sender_name}", message, tokens)
+
+    return JsonResponse({"status": "sent", "tokens_notified": len(tokens)})
+
+def _firebase_admin_app():
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+    except Exception as exc:
+        return None, f"firebase-admin install nahi hai: {exc}"
+
+    try:
+        return firebase_admin.get_app(), ""
+    except ValueError:
+        pass
+
+    service_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    service_file = os.getenv("FIREBASE_SERVICE_ACCOUNT_FILE", "").strip()
+
+    if not service_file and not service_json:
+        from django.conf import settings
+        default_path = settings.BASE_DIR / "firebase" / "service-account.json"
+        if default_path.exists():
+            service_file = str(default_path)
+
+    try:
+        if service_json:
+            return firebase_admin.initialize_app(credentials.Certificate(json.loads(service_json))), ""
+        if service_file:
+            return firebase_admin.initialize_app(credentials.Certificate(service_file)), ""
+        return firebase_admin.initialize_app(), ""
+    except Exception as exc:
+        return None, f"Server par Firebase service account set hona zaroori hai. Error: {exc}"
+
+
+def _send_push_to_tokens(title, body, tokens):
+    app, init_error = _firebase_admin_app()
+    if not app:
+        return 0, len(tokens), f"Firebase Admin credential set nahi hai: {init_error}"
+
+    try:
+        from firebase_admin import messaging
+    except Exception as exc:
+        return 0, len(tokens), f"Firebase messaging load nahi hua: {exc}"
+
+    success_count = 0
+    failure_count = 0
+    errors = []
+    for start in range(0, len(tokens), 500):
+        batch = tokens[start:start + 500]
+        msg = messaging.MulticastMessage(
+            notification=messaging.Notification(title=title, body=body),
+            webpush=messaging.WebpushConfig(
+                notification=messaging.WebpushNotification(
+                    title=title,
+                    body=body,
+                    icon="/static/icons/icon-192.png",
+                )
+            ),
+            tokens=batch,
+        )
+        try:
+            if hasattr(messaging, "send_each_for_multicast"):
+                resp = messaging.send_each_for_multicast(msg)
+            else:
+                resp = messaging.send_multicast(msg)
+            success_count += getattr(resp, "success_count", 0)
+            failure_count += getattr(resp, "failure_count", 0)
+        except Exception as exc:
+            failure_count += len(batch)
+            errors.append(str(exc))
+    return success_count, failure_count, " | ".join(errors[:3])
+
+
+@login_required
+def admin_notifications(request):
+    if not _can_access_admin(request):
+        messages.error(request, "Admin panel access allowed nahi hai.")
+        return redirect("dashboard")
+
+    tokens_qs = UserToken.objects.filter(is_active=True).exclude(token="")
+    if request.method == "POST":
+        title = (request.POST.get("title") or "").strip()
+        body = (request.POST.get("body") or "").strip()
+        if not title or not body:
+            messages.error(request, "Title aur message dono bharna zaroori hai.")
+            return redirect("admin_notifications")
+
+        tokens = list(tokens_qs.values_list("token", flat=True).distinct())
+        success_count, failure_count, error_text = _send_push_to_tokens(title, body, tokens)
+        PushNotificationLog.objects.create(
+            title=title,
+            body=body,
+            target_count=len(tokens),
+            success_count=success_count,
+            failure_count=failure_count,
+            error_message=error_text,
+            sent_by=request.user.username,
+        )
+        if success_count:
+            messages.success(request, f"{success_count} notification sent ho gaya.")
+        if failure_count or error_text:
+            messages.error(request, error_text or f"{failure_count} notification fail hua.")
+        return redirect("admin_notifications")
+
+    return render(
+        request,
+        "portal_main/admin_notifications.html",
+        {
+            "token_count": tokens_qs.count(),
+            "recent_logs": PushNotificationLog.objects.all()[:12],
+            "is_admin_user": True,
+        },
+    )
+
+
 @login_required
 def admin_applicants(request):
     if not _can_access_admin(request):
@@ -2799,6 +2979,11 @@ def user_chat(request):
                 message=message_text,
                 attachment=attachment,
             )
+            
+            admin_tokens = list(UserToken.objects.filter(user__is_staff=True, is_active=True).values_list('token', flat=True).distinct())
+            if admin_tokens:
+                sender_name = profile.full_name or profile.user.username
+                _send_push_to_tokens(f"New Message from {sender_name}", message_text or "Sent an attachment", admin_tokens)
         except Exception as e:
             # Storage/upload errors (Cloudinary/FS permissions) should not crash the whole page.
             logger.exception("User chat attachment upload failed (profile_id=%s)", profile.id)
@@ -2916,6 +3101,10 @@ def admin_chat_send(request):
             message=message_text,
             attachment=attachment,
         )
+        
+        user_tokens = list(UserToken.objects.filter(user=profile.user, is_active=True).values_list('token', flat=True).distinct())
+        if user_tokens:
+            _send_push_to_tokens("Admin Replied", message_text or "Sent an attachment", user_tokens)
     except Exception as e:
         logger.exception("Admin chat attachment upload failed (profile_id=%s)", profile.id)
         if getattr(settings, "DEBUG", False):
