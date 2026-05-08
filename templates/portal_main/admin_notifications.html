@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Notifications{% endblock %}
+{% block body_class %}min-h-screen bg-slate-100 text-slate-900{% endblock %}
+{% block page_container_class %}max-w-[1400px] mx-auto p-0{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:250px 1fr; min-height:100vh; }
+  .layout.compact { grid-template-columns:86px 1fr; }
+  .side { background:#fff; border-right:1px solid #dbe3ee; }
+  .layout.compact .side { padding-left:8px; padding-right:8px; }
+  .layout.compact .side .menu-label,
+  .layout.compact .side .brand-sub { display:none; }
+  .layout.compact .side .menu-link { justify-content:center; }
+  .menu-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-weight:800; color:#334155; }
+  .menu-link.active { background:#dcecff; color:#0c4a9a; }
+  .menu-link .material-symbols-outlined { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:#fff; font-size:19px; box-shadow:0 6px 14px rgba(15,23,42,.12); }
+  .side nav .menu-link:nth-of-type(1) .material-symbols-outlined { background:linear-gradient(135deg,#8e24aa,#ba68c8); }
+  .side nav .menu-link:nth-of-type(2) .material-symbols-outlined { background:linear-gradient(135deg,#1565c0,#42a5f5); }
+  .side nav .menu-link:nth-of-type(3) .material-symbols-outlined { background:linear-gradient(135deg,#ef6c00,#ffb74d); }
+  .side nav .menu-link:nth-of-type(4) .material-symbols-outlined { background:linear-gradient(135deg,#00897b,#26a69a); }
+  .side nav .menu-link:nth-of-type(5) .material-symbols-outlined { background:linear-gradient(135deg,#f9a825,#ffd54f); color:#1f2937; }
+  .side nav .menu-link:nth-of-type(6) .material-symbols-outlined { background:linear-gradient(135deg,#2e7d32,#66bb6a); }
+  .side nav .menu-link:nth-of-type(7) .material-symbols-outlined { background:linear-gradient(135deg,#c62828,#ef5350); }
+  .side nav .menu-link:nth-of-type(8) .material-symbols-outlined { background:linear-gradient(135deg,#0d9488,#22d3ee); }
+  .side nav .menu-link:nth-of-type(9) .material-symbols-outlined { background:linear-gradient(135deg,#283593,#5c6bc0); }
+  .side nav .menu-link:nth-of-type(10) .material-symbols-outlined { background:linear-gradient(135deg,#4b5563,#9ca3af); }
+  .panel { padding:16px; min-width:0; }
+  .block { background:#fff; border:1px solid #d8dfeb; border-radius:18px; box-shadow:0 12px 30px rgba(15,23,42,.04); }
+  .input { width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:12px 14px; font-weight:700; outline:none; }
+  .input:focus { border-color:#2563eb; box-shadow:0 0 0 4px rgba(37,99,235,.12); }
+  @media (max-width:1100px){ .layout,.layout.compact{grid-template-columns:1fr}.panel{padding:12px}.side{position:static} }
+</style>
+
+<div id="adminLayout" class="layout">
+  <aside class="side p-4">
+    <div class="px-3 py-2 border-b border-slate-200">
+      <div class="text-2xl font-black">Digi Form</div>
+      <div class="text-sm text-slate-500 brand-sub">Notification Center</div>
+      <button id="sidebarAdjustBtn" type="button" class="mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700">Adjust</button>
+    </div>
+    <nav class="mt-4 space-y-2">
+      <a class="menu-link" href="{% url 'admin_applicants' %}"><span class="material-symbols-outlined">groups</span><span class="menu-label">Applicants</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'student' %}"><span class="material-symbols-outlined">school</span><span class="menu-label">Student Control</span></a>
+      <a class="menu-link" href="{% url 'admin_option_control' 'government' %}"><span class="material-symbols-outlined">work</span><span class="menu-label">Gov Recruitment</span></a>
+      <a class="menu-link" href="{% url 'admin_master_data_control' %}"><span class="material-symbols-outlined">table_chart</span><span class="menu-label">Master Data</span></a>
+      <a class="menu-link" href="{% url 'admin_documents' %}"><span class="material-symbols-outlined">folder</span><span class="menu-label">Documents</span></a>
+      <a class="menu-link" href="{% url 'admin_chat' %}"><span class="material-symbols-outlined">chat</span><span class="menu-label">Chat</span></a>
+      <a class="menu-link" href="{% url 'admin_news' %}"><span class="material-symbols-outlined">campaign</span><span class="menu-label">News</span></a>
+      <a class="menu-link active" href="{% url 'admin_notifications' %}"><span class="material-symbols-outlined">notifications_active</span><span class="menu-label">Notifications</span></a>
+      <a class="menu-link" href="{% url 'admin_payment' %}"><span class="material-symbols-outlined">payments</span><span class="menu-label">Payment</span></a>
+      <a class="menu-link" href="{% url 'logout' %}"><span class="material-symbols-outlined">logout</span><span class="menu-label">Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="panel space-y-4">
+    {% if messages %}
+      {% for message in messages %}
+      <div class="rounded-xl border px-4 py-3 text-sm font-bold {% if message.tags == 'error' %}border-rose-200 bg-rose-50 text-rose-700{% else %}border-emerald-200 bg-emerald-50 text-emerald-700{% endif %}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <section class="block p-5">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-3xl font-black">Push Notifications</h1>
+          <p class="mt-1 text-sm font-semibold text-slate-500">Firebase FCM se sab users ko ek sath professional notification bhejo.</p>
+        </div>
+        <div class="rounded-2xl bg-blue-50 px-4 py-3 text-center">
+          <div class="text-2xl font-black text-blue-700">{{ token_count }}</div>
+          <div class="text-xs font-bold text-blue-900">Saved Devices</div>
+        </div>
+      </div>
+
+      <form method="post" class="mt-5 grid grid-cols-1 gap-3">
+        {% csrf_token %}
+        <div>
+          <label class="text-xs font-black uppercase tracking-wide text-slate-500">Notification Title</label>
+          <input name="title" class="input mt-1" maxlength="160" placeholder="e.g. New Vacancy Available" required>
+        </div>
+        <div>
+          <label class="text-xs font-black uppercase tracking-wide text-slate-500">Message</label>
+          <textarea name="body" rows="5" class="input mt-1" placeholder="User ko jo notification dikhana hai..." required></textarea>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" class="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-200">Send To All Users</button>
+          <span class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">Server par Firebase service account set hona zaroori hai.</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="block p-5">
+      <h2 class="text-xl font-black">Recent Notification Logs</h2>
+      <div class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <tr>
+              <th class="px-3 py-2">Title</th>
+              <th class="px-3 py-2">Target</th>
+              <th class="px-3 py-2">Success</th>
+              <th class="px-3 py-2">Failed</th>
+              <th class="px-3 py-2">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in recent_logs %}
+            <tr class="border-t border-slate-100">
+              <td class="px-3 py-2 font-bold">{{ log.title }}{% if log.error_message %}<div class="text-xs font-semibold text-rose-600">{{ log.error_message|truncatechars:120 }}</div>{% endif %}</td>
+              <td class="px-3 py-2">{{ log.target_count }}</td>
+              <td class="px-3 py-2 text-emerald-700 font-bold">{{ log.success_count }}</td>
+              <td class="px-3 py-2 text-rose-700 font-bold">{{ log.failure_count }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ log.created_at|date:"d M Y H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="px-3 py-8 text-center font-semibold text-slate-500">Abhi koi notification send nahi hua.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  (function () {
+    const layout = document.getElementById("adminLayout");
+    const btn = document.getElementById("sidebarAdjustBtn");
+    if (!layout || !btn) return;
+    const saved = localStorage.getItem("admin_sidebar_compact");
+    if (saved === "1") layout.classList.add("compact");
+    btn.addEventListener("click", () => {
+      layout.classList.toggle("compact");
+      localStorage.setItem("admin_sidebar_compact", layout.classList.contains("compact") ? "1" : "0");
+    });
+  })();
+</script>
+{% endblock %}
