@@ -2952,8 +2952,18 @@ def user_chat(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     messages_qs = _decorate_chat_messages(profile.chat_messages.all())
 
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+    if request.method == "GET" and is_ajax:
+        last_id = request.GET.get("last_id", "0")
+        try:
+            last_id = int(last_id)
+        except ValueError:
+            last_id = 0
+        new_msgs = profile.chat_messages.filter(id__gt=last_id).order_by("id")
+        msgs_data = [_chat_message_payload(msg) for msg in new_msgs]
+        return JsonResponse({"ok": True, "messages": msgs_data})
+
     if request.method == "POST":
-        is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
         if not profile.chat_enabled:
             if is_ajax:
                 return JsonResponse({"ok": False, "error": "Admin ne abhi chat enable nahi kiya hai."}, status=400)
@@ -3037,6 +3047,19 @@ def admin_chat(request):
         selected_profile = next((p for p in profiles if p.id == int(profile_id)), None)
     if not selected_profile:
         selected_profile = profiles[0] if profiles else None
+
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+    if request.method == "GET" and is_ajax:
+        last_id = request.GET.get("last_id", "0")
+        try:
+            last_id = int(last_id)
+        except ValueError:
+            last_id = 0
+        if selected_profile:
+            new_msgs = selected_profile.chat_messages.filter(id__gt=last_id).order_by("id")
+            msgs_data = [_chat_message_payload(msg) for msg in new_msgs]
+            return JsonResponse({"ok": True, "messages": msgs_data})
+        return JsonResponse({"ok": True, "messages": []})
 
     thread_items = []
     for p in profiles:
