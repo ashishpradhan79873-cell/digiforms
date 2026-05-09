@@ -234,6 +234,70 @@
     }
     scrollToBottom();
 
+    let lastMessageId = 0;
+    function updateLastId() {
+      const rows = document.querySelectorAll('[data-message-row]');
+      if (rows.length > 0) {
+        lastMessageId = parseInt(rows[rows.length - 1].getAttribute('data-message-id')) || 0;
+      }
+    }
+    updateLastId();
+
+    function appendMessage(m) {
+      if (!thread || document.querySelector(`[data-message-id="${m.id}"]`)) return;
+      const row = document.createElement('div');
+      const isAdmin = m.from_admin;
+      row.className = 'bubble ' + (isAdmin ? 'bubble-admin' : 'bubble-user');
+      row.setAttribute('data-message-row', '');
+      row.setAttribute('data-message-id', m.id || '');
+      
+      const safeMsg = (m.message || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      let attachmentHtml = '';
+      const a = m.attachment || {};
+      if (a.download_url) {
+        const openUrl = a.open_url || a.url || (a.download_url ? a.download_url.replace('?dl=1', '') : '');
+        if (a.kind === 'image') {
+          attachmentHtml = `<div class="att-media"><div class="att-image-wrap"><img src="${openUrl}" alt="${a.name || ''}" class="att-image"><div class="att-image-meta">${m.time || ''}</div></div></div>`;
+        } else if (a.kind === 'pdf') {
+          attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">PDF DOCUMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
+        } else {
+          attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">ATTACHMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
+        }
+      }
+      
+      const senderName = isAdmin ? 'Admin' : 'You';
+      let actionsHtml = '';
+      if (isAdmin && a.download_url) {
+        actionsHtml = `<div class="att-pill-row">
+          ${a.kind === 'image' ? `<button type="button" class="att-pill att-pill-primary preview-image-btn" data-preview-src="${a.open_url || openUrl}" data-preview-name="${a.name || ''}">Preview</button>` : ''}
+          <a href="${a.open_url || openUrl}" target="_blank" class="att-pill">Open</a>
+          <a href="${a.download_url}" class="att-pill att-pill-dark" download>Save As</a>
+        </div>`;
+      }
+      
+      row.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="font-semibold text-sm">${senderName}</div><input type="checkbox" class="select-box message-select-box"></div>${safeMsg ? `<div class="mt-1 text-sm">${safeMsg}</div>` : ''}${attachmentHtml}${actionsHtml}${a.kind === 'image' ? '' : `<div class="msg-line">${m.time || ''}</div>`}`;
+      thread.appendChild(row);
+      bindPreviewActions(row);
+    }
+
+    setInterval(async () => {
+      try {
+        const resp = await fetch(`{% url "user_chat" %}?last_id=${lastMessageId}`, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const data = await resp.json();
+        if (data.ok && data.messages && data.messages.length > 0) {
+          let added = false;
+          data.messages.forEach(m => {
+            appendMessage(m);
+            lastMessageId = Math.max(lastMessageId, m.id);
+            added = true;
+          });
+          if (added) scrollToBottom();
+        }
+      } catch(e) {}
+    }, 3000);
+
     const attachmentInput = document.getElementById('attachmentInput');
     const attachmentName = document.getElementById('attachmentName');
     // File picker is opened via <label for="attachmentInput"> to support mobile browsers.
@@ -284,28 +348,8 @@
           }
           if (!data || !data.ok) throw new Error((data && data.error) || 'Send failed');
           const m = data.message || {};
-          if (thread) {
-            const row = document.createElement('div');
-            row.className = 'bubble bubble-user';
-            row.setAttribute('data-message-row', '');
-            row.setAttribute('data-message-id', m.id || '');
-            const safeMsg = (m.message || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-            let attachmentHtml = '';
-            const a = m.attachment || {};
-            if (a.download_url) {
-              const openUrl = a.open_url || a.url || (a.download_url ? a.download_url.replace('?dl=1', '') : '');
-              if (a.kind === 'image') {
-                attachmentHtml = `<div class="att-media"><div class="att-image-wrap"><img src="${openUrl}" alt="${a.name || ''}" class="att-image"><div class="att-image-meta">${m.time || ''}</div></div></div>`;
-              } else if (a.kind === 'pdf') {
-                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">PDF DOCUMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
-              } else {
-                attachmentHtml = `<div class="mt-2"><div class="att-box"><div class="att-meta"><div class="att-sub">ATTACHMENT</div><div class="att-name">${a.name || ''}</div></div></div></div>`;
-              }
-            }
-            row.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="font-semibold text-sm">You</div><input type="checkbox" class="select-box message-select-box"></div>${safeMsg ? `<div class="mt-1 text-sm">${safeMsg}</div>` : ''}${attachmentHtml}${a.kind === 'image' ? '' : `<div class="msg-line">${m.time || ''}</div>`}`;
-            thread.appendChild(row);
-            bindPreviewActions(row);
-          }
+          appendMessage(m);
+          lastMessageId = Math.max(lastMessageId, m.id);
           sendForm.reset();
           if (attachmentName) attachmentName.textContent = '';
           scrollToBottom();
